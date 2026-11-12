@@ -105,7 +105,7 @@ def grade(item: Item, output: str) -> bool:
         got, gold = _num(output), _num(item.gold)
         return got is not None and gold is not None and got == gold
     if item.source == "mmlu_pro":
-        m = re.findall(r"(?i:answer(?:\s+is)?)\s*[:\s]*\**\s*\(?\**([A-J])\**\)?(?![A-Za-z])", output)
+        m = re.findall(r"(?i:answer(?:\s+is\s*:?|\s*:))\s*[:\s]*\**\s*\(?\**([A-J])\**\)?(?![A-Za-z])", output)
         if not m:
             lines = output.strip().splitlines()
             m = re.findall(r"^\W*\(?\**([A-J])\**\)?\W*$", lines[-1]) if lines else []

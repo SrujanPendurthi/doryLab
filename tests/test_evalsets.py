@@ -88,3 +88,8 @@ def test_mbpp_plain_fence_fallback():
     assert grade(mbpp(["assert f()==1"]), "```\ndef f(): return 1\n```")
     # python block wins over a later plain block
     assert grade(mbpp(["assert f()==1"]), "```python\ndef f(): return 1\n```\n```\nnot code\n```")
+
+
+@pytest.mark.parametrize("out", ["answer I think so", "the answer B is wrong"])
+def test_mmlu_loose_answer_prose_rejected(out):
+    assert not grade(Item("x", "mmlu_pro", "q", "I" if out.startswith("answer I") else "B"), out)
