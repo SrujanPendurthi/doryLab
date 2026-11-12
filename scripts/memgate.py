@@ -1,6 +1,7 @@
 """Step 5 gate: 4 servers (k=1,2,4 + k=1 embeddings) up at once; system-wide memory delta + swap growth."""
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 from dory.client import complete, embed_last
@@ -23,6 +24,7 @@ def pressure():
     return subprocess.check_output("memory_pressure | tail -1", shell=True, text=True).strip()
 
 
+SLOTS = int(sys.argv[1]) if len(sys.argv) > 1 else 1  # router default: 4 (embeddings server stays 1x8192 as in Router)
 p = bench_prompts()[0]
 print("before:", pressure(), f"used={used_gb():.2f}GB swap={swap_mb()}MB", flush=True)
 u0, s0 = used_gb(), swap_mb()
@@ -30,7 +32,7 @@ srvs = []
 try:
     for k, emb in ((1, False), (2, False), (4, False), (1, True)):
         port = free_port()
-        srvs.append((k, emb, Server(server_args(GGUF, k, port, slots=1, embeddings=emb), port, startup_timeout=300)))
+        srvs.append((k, emb, Server(server_args(GGUF, k, port, slots=1 if emb else SLOTS, ctx_per_slot=8192 if emb else 4096, embeddings=emb), port, startup_timeout=300)))
     for k, emb, s in srvs:
         embed_last(s.url, p) if emb else complete(s.url, p, 8)
     u1, s1 = used_gb(), swap_mb()

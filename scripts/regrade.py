@@ -18,7 +18,7 @@ def main(argv=None):
         rows = [json.loads(l) for l in p.read_text().splitlines() if l.strip()]
         up = down = 0
         for r in rows:
-            if r.get("error"):
+            if r.get("error") or r["source"] == "mbpp":  # truncation never changes mbpp; rerunning code could flake
                 continue
             new = bool(grade(items[r["id"]], r["output"], r["n_gen"] >= MAX_TOKENS[r["source"]]))
             up += new and not r["correct"]
