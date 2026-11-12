@@ -93,3 +93,15 @@ def test_mbpp_plain_fence_fallback():
 @pytest.mark.parametrize("out", ["answer I think so", "the answer B is wrong"])
 def test_mmlu_loose_answer_prose_rejected(out):
     assert not grade(Item("x", "mmlu_pro", "q", "I" if out.startswith("answer I") else "B"), out)
+
+
+def test_truncated_grading():
+    g = Item("x", "gsm8k", "q", "42")
+    assert not grade(g, "so 6*7 = 42", truncated=True)
+    assert grade(g, "so 6*7 = 42")
+    assert grade(g, "The answer is 42", truncated=True)
+    m = Item("x", "mmlu_pro", "q", "C")
+    assert not grade(m, "reasoning\nC", truncated=True)
+    assert grade(m, "reasoning\nC")
+    assert grade(m, "The answer is C", truncated=True)
+    assert not grade(Item("x", "mmlu_pro", "q", "J"), "- J. .")

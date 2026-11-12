@@ -78,9 +78,9 @@ def _f(s):
         return None
 
 
-def _num(s):
+def _num(s, fallback=True):
     m = re.findall(r"answer is\s*\$?\s*(-?[\d,]*\.?\d+)", s, re.I)
-    m = m or re.findall(r"(?<!\d)-?\d[\d,]*(?:\.\d+)?", s)
+    m = m or (fallback and re.findall(r"(?<!\d)-?\d[\d,]*(?:\.\d+)?", s))
     return _f(m[-1]) if m else None
 
 
@@ -100,14 +100,14 @@ def _mbpp(item, output):
     return r.returncode == 0
 
 
-def grade(item: Item, output: str) -> bool:
+def grade(item: Item, output: str, truncated: bool = False) -> bool:
     if item.source == "gsm8k":
-        got, gold = _num(output), _num(item.gold)
+        got, gold = _num(output, not truncated), _num(item.gold)
         return got is not None and gold is not None and got == gold
     if item.source == "mmlu_pro":
         m = re.findall(r"(?i:answer(?:\s+is\s*:?|\s*:))\s*[:\s]*\**\s*\(?\**([A-J])\**\)?(?![A-Za-z])", output)
-        if not m:
+        if not m and not truncated:
             lines = output.strip().splitlines()
-            m = re.findall(r"^\W*\(?\**([A-J])\**\)?\W*$", lines[-1]) if lines else []
+            m = [] if not lines or re.match(r"\s*[-*]\s", lines[-1]) else re.findall(r"^\W*\(?\**([A-J])\**\)?\W*$", lines[-1])
         return bool(m) and m[-1] == item.gold
     return _mbpp(item, output)
