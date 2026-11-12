@@ -53,3 +53,54 @@ def save_policy(path, kind: str, model, tau: float, feature_set: str):
 
 def load_policy(path) -> dict:
     return joblib.load(path)
+
+
+def main(argv=None):
+    import argparse
+    import json
+    from pathlib import Path
+
+    from dory.bench import load_speed
+    from dory.evaluate import _correct, fixed, oracle, paired_bootstrap, policy_metrics, random_matched, report
+    from dory.features import text_features
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--kind", choices=["text"], required=True)
+    ap.add_argument("--results", default="results")
+    R = Path(ap.parse_args(argv).results)
+    speed = load_speed(R / "speed.json")
+    load = lambda s: [json.loads(l) for l in (R / f"labels_{s}.jsonl").read_text().splitlines() if l.strip()]
+    train, hold = load("train"), load("holdout")
+    # train X from cache if present; holdout always computed (need measured seconds)
+    tp = R / "features_text_train.npy"
+    if tp.exists() and len(Xtr := np.load(tp)) == len(train):
+        pass
+    else:
+        Xtr = text_features([r["prompt"] for r in train])[0]
+        np.save(tp, Xtr)
+    Xho, code_ho, secs = text_features([r["prompt"] for r in hold])
+    np.save(R / "features_text_holdout.npy", Xho)  # X only: probe.py hstacks it
+    keep = np.array([r["label_k"] is not None for r in train])
+    model = fit(Xtr[keep], np.array([r["label_k"] for r in train])[keep], cv=True)
+    proba = proba_for_ks(model, Xho)
+    tau = tau_for_mean_k(proba, code_ho, 2.0)
+    save_policy(R / "policy_text.joblib", "text", model, tau, feature_set="text")
+    choice = {r["id"]: int(k) for r, k in zip(hold, choose_k(proba, code_ho, tau))}
+    extra = {r["id"]: float(s) for r, s in zip(hold, secs)}
+    pols = {"text": (choice, extra)}
+    pols.update({f"fixed{k}": (fixed(hold, k), None) for k in KS})
+    pols["random_matched"] = (random_matched(hold, 2.0), None)
+    pols["oracle"] = (oracle(hold), None)
+    out = report(hold, pols, speed)
+    m_t, m_2 = (policy_metrics(hold, c, speed, e) for c, e in (pols["text"], pols["fixed2"]))
+    d, lo, hi = paired_bootstrap([_correct(r, choice[r["id"]]) for r in hold],
+                                 [_correct(r, 2) for r in hold])
+    ok = d >= 0.01 or (lo <= 0 <= hi and m_t["mean_seconds"] <= 0.85 * m_2["mean_seconds"])
+    out += f"\n\ntau={tau:.4f} gate({'PASS' if ok else 'FAIL'}): dacc={d:+.3f} [{lo:+.3f}, {hi:+.3f}], " \
+           f"seconds {m_t['mean_seconds']:.2f} vs fixed2 {m_2['mean_seconds']:.2f}"
+    print(out)
+    with open(R / "decisions.md", "a") as f:
+        f.write(f"\n## Task 8\n\n{out}\n")
+
+
+if __name__ == "__main__":
+    main()

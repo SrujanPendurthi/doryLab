@@ -78,3 +78,34 @@ def test_text_features_empty():
     from dory.features import text_features
     X, is_code, seconds = text_features([])
     assert X.shape == (0, 9) and is_code.shape == (0,) and seconds.shape == (0,)
+
+
+def test_main_text(tmp_path, monkeypatch):
+    import json
+    from dory import features, policy
+    rng = np.random.default_rng(0)
+
+    def fake(prompts):
+        X = rng.normal(size=(len(prompts), 9))
+        X[:, 0] = [float(p) for p in prompts]
+        X[:, -1] = 0
+        return X, np.zeros(len(prompts), bool), np.full(len(prompts), 0.01)
+    monkeypatch.setattr(features, "text_features", fake)
+    (tmp_path / "speed.json").write_text(json.dumps(
+        {str(k): {"prompt_tps": 100.0, "gen_tps": 10.0 / k} for k in (1, 2, 4)}))
+
+    def rows(n, p):
+        out = []
+        for i in range(n):
+            y = [1, 2, 4][i % 3]
+            out.append({"id": f"{p}{i}", "source": "gsm8k", "prompt": str(y), "label_k": y,
+                        "correct_by_k": {str(k): k >= y for k in (1, 2, 4)},
+                        "tokens_by_k": {str(k): [10, 5] for k in (1, 2, 4)}})
+        return out
+    for s, n in (("train", 30), ("holdout", 12)):
+        (tmp_path / f"labels_{s}.jsonl").write_text("\n".join(json.dumps(r) for r in rows(n, s)))
+    policy.main(["--kind", "text", "--results", str(tmp_path)])
+    assert np.load(tmp_path / "features_text_train.npy").shape == (30, 9)
+    assert np.load(tmp_path / "features_text_holdout.npy").shape == (12, 9)
+    assert 0 < policy.load_policy(tmp_path / "policy_text.joblib")["tau"] <= 1
+    assert "## Task 8" in (tmp_path / "decisions.md").read_text()
