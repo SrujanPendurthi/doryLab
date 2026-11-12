@@ -39,6 +39,21 @@ Phase 0 quality gate (holdout gsm8k+mmlu_pro, 200 items, q5, f16 KV, greedy, thi
 
 ## Task 6
 
+Labels (min k correct; None = wrong at all of 1,2,4). Sweeps: 0 error rows in all files after 3 passes.
+
+| split | n | k=1 | k=2 | k=4 | None |
+|---|---|---|---|---|---|
+| train (lazy) | 1500 | 0.878 | 0.090 | 0.031 | 449 |
+| holdout | 300 | 0.896 | 0.075 | 0.030 | 99 |
+| final | 100 | 0.881 | 0.090 | 0.030 | 33 |
+
+(class balance is over non-None labels)
+
+- Gate (every class <= 0.80): FAIL (k=1 = 0.878 on train). Ruling Z: continue instead of stopping — fit already uses class_weight="balanced"; remaining tasks cost minutes; the Task 8 gate vs fixed2 is the real usefulness test. A negative result there is the answer.
+- non_monotone_rate(holdout) = 0.093 (<= 0.10, not flagged, but close: the oracle in Task 7 is somewhat optimistic). final: 0.06.
+- Holdout fixed-k accuracy (all 300): k1 60.0, k2 58.7, k4 61.0, oracle 67.0. Per source k1/k2/k4: gsm8k 87/86/85, mmlu_pro 48/43/50, mbpp 45/47/48.
+- Note: fixed1 beats fixed2 at ~1/2 the modeled cost, so fixed2 is a weak baseline; Task 8 also reports fixed1 for the honest comparison.
+
 ## Task 8
 
 ## Task 9
