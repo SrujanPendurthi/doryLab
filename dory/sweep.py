@@ -18,17 +18,35 @@ def read_rows(path: Path) -> list[dict]:
     if Path(path).exists():
         for line in Path(path).read_text().splitlines():
             try:
-                rows.append(json.loads(line))
+                r = json.loads(line)
             except ValueError:
-                pass
+                continue
+            if isinstance(r, dict):
+                rows.append(r)
     return rows
 
 
+def latest_rows(rows):
+    """(id, k, variant) -> last non-error row, else last row."""
+    out = {}
+    for r in rows:
+        key = (r.get("id"), r.get("k"), r.get("variant"))
+        if r.get("error") and key in out and not out[key].get("error"):
+            continue
+        out[key] = r
+    return out
+
+
+def _final(r):
+    e = r.get("error")
+    return not e or e.startswith("grade:") or "HTTP 4" in e  # others (timeout, 5xx) are retried
+
+
 def pending(items, k, variant, done, lazy):
-    mine = [r for r in done if r.get("variant") == variant]
-    have = {r["id"] for r in mine if r.get("k") == k}
+    mine = {key: r for key, r in latest_rows(done).items() if key[2] == variant}
+    have = {i for (i, kk, _), r in mine.items() if kk == k and _final(r)}
     if lazy:
-        have |= {r["id"] for r in mine if r.get("k", k) < k and r.get("correct") is True}
+        have |= {i for (i, kk, _), r in mine.items() if kk < k and r.get("correct") is True}
     return [it for it in items if it.id not in have]
 
 
@@ -36,7 +54,10 @@ def run_sweep(items, ks, variant, gguf, out, slots, kv_type="f16", lazy=False):
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     lock = threading.Lock()
+    torn = out.exists() and out.stat().st_size > 0 and not out.read_bytes().endswith(b"\n")
     with out.open("a") as f:
+        if torn:
+            f.write("\n")
         def write(r):
             with lock:
                 f.write(json.dumps(r) + "\n")

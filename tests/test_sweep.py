@@ -83,3 +83,38 @@ def test_lazy_run_sweep(monkeypatch, tmp_path):
     started.clear()
     sw.run_sweep([mk(0), mk(1)], [1, 2], "q5", tmp_path / "g", out, 2, lazy=True)
     assert started == []
+
+
+def test_resume_after_torn_line(monkeypatch, tmp_path):
+    out = tmp_path / "o.jsonl"
+    out.write_text('{"id": "x", "k"')
+    monkeypatch.setattr(sw, "complete", lambda *a, **kw: SimpleNamespace(text="t", n_prompt=1, n_gen=1))
+    monkeypatch.setattr(sw, "grade", lambda it, o: True)
+    patch_server(monkeypatch, [])
+    sw.run_sweep([mk(0)], [1], "q5", tmp_path / "g", out, 1)
+    assert [r["id"] for r in sw.read_rows(out)] == ["i0"]
+
+
+def test_read_rows_skips_non_dict(tmp_path):
+    p = tmp_path / "r.jsonl"
+    p.write_text('[1]\n3\n{"id": "a"}\n')
+    assert len(sw.read_rows(p)) == 1
+
+
+def err(i, k, e, variant="q5"):
+    return {"id": f"i{i}", "k": k, "variant": variant, "correct": False, "error": e}
+
+
+def test_pending_error_policy():
+    items = [mk(0), mk(1), mk(2)]
+    done = [err(0, 1, "timed out"), err(1, 1, "HTTP 400 ctx"), err(2, 1, "grade: boom")]
+    assert [i.id for i in sw.pending(items, 1, "q5", done, False)] == ["i0"]
+
+
+def test_latest_rows_prefers_clean():
+    ok = {"id": "i0", "k": 1, "variant": "q5", "correct": True, "error": None}
+    e = err(0, 1, "timed out")
+    key = ("i0", 1, "q5")
+    assert sw.latest_rows([e, ok])[key] is ok
+    assert sw.latest_rows([ok, e])[key] is ok
+    assert sw.latest_rows([e])[key] is e
