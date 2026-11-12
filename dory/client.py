@@ -4,8 +4,8 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
-# Thinking-off switch for the chat template; Task 1 fills this in. Sent only when non-empty.
-CHAT_TEMPLATE_KWARGS: dict = {}
+# Thinking-off switch for the chat template (Task 1: `enable_thinking`). Sent only when non-empty.
+CHAT_TEMPLATE_KWARGS: dict = {"enable_thinking": False}
 
 
 class ServerError(RuntimeError):

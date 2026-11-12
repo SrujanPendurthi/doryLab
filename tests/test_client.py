@@ -29,7 +29,8 @@ def fake(status, body):
     return srv, f"http://127.0.0.1:{srv.server_port}", seen
 
 
-def test_complete_parses_timings():
+def test_complete_parses_timings(monkeypatch):
+    monkeypatch.setattr(client, "CHAT_TEMPLATE_KWARGS", {})
     srv, url, seen = fake(200, OK)
     c = complete(url, "q", 8)
     srv.shutdown()
