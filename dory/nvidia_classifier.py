@@ -1,8 +1,12 @@
 """Custom multi-head model copied from the nvidia/prompt-task-and-complexity-classifier card."""
+import functools
+import json
+
 import numpy as np
 import torch
 import torch.nn as nn
-from huggingface_hub import PyTorchModelHubMixin
+from huggingface_hub import hf_hub_download
+from safetensors.torch import load_file
 from transformers import AutoConfig, AutoModel, AutoTokenizer
 
 REPO = "nvidia/prompt-task-and-complexity-classifier"
@@ -23,10 +27,11 @@ class MulticlassHead(nn.Module):
         return self.fc(x)
 
 
-class CustomModel(nn.Module, PyTorchModelHubMixin):
+class CustomModel(nn.Module):
     def __init__(self, target_sizes, task_type_map, weights_map, divisor_map):
         super().__init__()
-        self.backbone = AutoModel.from_pretrained("microsoft/DeBERTa-v3-base")
+        # weights come from the checkpoint, so build the architecture only
+        self.backbone = AutoModel.from_config(AutoConfig.from_pretrained("microsoft/DeBERTa-v3-base"))
         self.target_sizes = target_sizes.values()
         self.task_type_map = task_type_map
         self.weights_map = weights_map
@@ -51,7 +56,7 @@ class CustomModel(nn.Module, PyTorchModelHubMixin):
                     [s[0] for s in top2_prob_rounded])
         preds = torch.softmax(preds, dim=1)
         weights = np.array(self.weights_map[target])
-        scores = np.sum(np.array(preds.detach().cpu()) * weights, axis=1) / self.divisor_map[target]
+        scores = np.sum(preds.detach().cpu().numpy() * weights, axis=1) / self.divisor_map[target]
         scores = [round(v, decimal) for v in scores]
         if target == "number_of_few_shots":
             scores = [x if x >= 0.05 else 0 for x in scores]
@@ -79,12 +84,17 @@ class CustomModel(nn.Module, PyTorchModelHubMixin):
         return self.process_logits([self.heads[k](pooled) for k in range(len(self.target_sizes))])
 
 
+@functools.lru_cache(maxsize=None)
 def load_classifier(device=None):
-    """Returns (model, tokenizer, device). Weights download on first call."""
+    """Returns (model, tokenizer, device). Weights download on first call; cached per device.
+
+    The repo's config.json has no `model_type` (it is a PyTorchModelHubMixin repo), so
+    AutoConfig cannot read it: parse the JSON and load model.safetensors directly.
+    """
     device = device or ("mps" if torch.backends.mps.is_available() else "cpu")
-    cfg = AutoConfig.from_pretrained(REPO)
-    tok = AutoTokenizer.from_pretrained(REPO)
-    model = CustomModel(target_sizes=cfg.target_sizes, task_type_map=cfg.task_type_map,
-                        weights_map=cfg.weights_map, divisor_map=cfg.divisor_map
-                        ).from_pretrained(REPO)
-    return model.to(device).eval(), tok, device
+    with open(hf_hub_download(REPO, "config.json")) as f:
+        cfg = json.load(f)
+    model = CustomModel(target_sizes=cfg["target_sizes"], task_type_map=cfg["task_type_map"],
+                        weights_map=cfg["weights_map"], divisor_map=cfg["divisor_map"])
+    model.load_state_dict(load_file(hf_hub_download(REPO, "model.safetensors")))
+    return model.to(device).eval(), AutoTokenizer.from_pretrained(REPO), device

@@ -20,6 +20,8 @@ def feature_rows(res: dict, prompts: list[str]):
 
 def text_features(prompts: list[str], batch_size: int = 16):
     """Returns (X, is_code, seconds); seconds = batch wall time / batch size, per prompt."""
+    if not prompts:
+        return np.empty((0, 9)), np.empty(0, bool), np.empty(0)
     model, tok, device = load_classifier()
     parts, secs = [], []
     for i in range(0, len(prompts), batch_size):
