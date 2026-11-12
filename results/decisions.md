@@ -56,7 +56,36 @@ Labels (min k correct; None = wrong at all of 1,2,4). Sweeps: 0 error rows in al
 
 ## Task 8
 
+Text policy holdout report (tau via tau_for_mean_k target 2.0):
+
+policy | acc | mean_k | mean_seconds | Δacc vs fixed2 [95% CI]
+--- | --- | --- | --- | ---
+text | 0.593 | 2.00 | 18.86 | +0.007 [-0.010, +0.027]
+fixed1 | 0.600 | 1.00 | 10.38 | +0.013 [-0.023, +0.050]
+fixed2 | 0.587 | 2.00 | 18.52 | +0.000 [+0.000, +0.000]
+fixed4 | 0.610 | 4.00 | 30.90 | +0.023 [-0.010, +0.057]
+random_matched | 0.587 | 2.00 | 18.52 | +0.000 [+0.000, +0.000]
+oracle | 0.670 | 1.11 | 11.20 | +0.083 [+0.053, +0.117]
+
+tau=0.4326 gate(FAIL): dacc=+0.007 [-0.010, +0.027], seconds 18.86 vs fixed2 18.52
+
 ## Task 9
+
+Probe holdout report (kv=f16)
+
+policy | acc | mean_k | mean_seconds | Δacc vs fixed2 [95% CI]
+--- | --- | --- | --- | ---
+fixed1 | 0.600 | 1.00 | 10.38 | +0.013 [-0.023, +0.050]
+fixed2 | 0.587 | 2.00 | 18.52 | +0.000 [+0.000, +0.000]
+fixed4 | 0.610 | 4.00 | 30.90 | +0.023 [-0.010, +0.057]
+oracle | 0.670 | 1.11 | 11.20 | +0.083 [+0.053, +0.117]
+text | 0.593 | 2.00 | 18.90 | +0.007 [-0.010, +0.027]
+probe | 0.590 | 2.00 | 18.12 | +0.003 [-0.023, +0.030]
+probe+text | 0.590 | 2.00 | 18.27 | +0.003 [-0.023, +0.030]
+
+- Gate: probe 0.590 and probe+text 0.590 vs text 0.593 at matched mean_k 2.0, so neither is >= +1.0 pt. Probe NOT promoted.
+- Text failed Task 8, so per plan the chosen policy is None (fixed k=2 with the code floor). No results/policy.joblib is written.
+- Note: fixed1 with the code floor (mbpp at k=2) scores (87+48+47)/300 = 60.7% on holdout. That beats fixed2 (58.7%) at lower cost. It is reported on final as a comparison only, not adopted, since it was chosen by looking at holdout.
 
 ## Task 10
 

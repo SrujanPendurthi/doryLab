@@ -6,3 +6,5 @@ __pycache__/
 .superpowers/
 .worktrees/
 .DS_Store
+results/features_*.npy
+results/logs/
