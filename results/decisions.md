@@ -24,6 +24,19 @@
 
 ## Task 5
 
+Phase 0 quality gate (holdout gsm8k+mmlu_pro, 200 items, q5, f16 KV, greedy, thinking off):
+
+| dataset | k=1 | k=2 | k=4 |
+|---|---|---|---|
+| gsm8k (100) | 87.0 | 86.0 | 85.0 |
+| mmlu_pro (100) | 48.0 | 43.0 | 50.0 |
+| combined (200) | 135 | 129 | 135 |
+
+- Gate (a) k=4 >= k=1: PASS (135 = 135, tie). Loops add no aggregate accuracy at fixed k; per-item disagreement is the router's only signal.
+- Oracle (correct at any k): gsm8k 93, mmlu_pro 58 (151/200 = 75.5% vs best fixed 67.5%). Items wrong at k=1 but fixed by k=2 or k=4: gsm8k 6, mmlu_pro 10.
+- mmlu_pro truncation at 512 tokens: 29/38/36 items at k=1/2/4; gsm8k 7/7/9.
+- Gate (b): CHOSEN_KV = f16 (q8_0 quality check skipped, Ruling V: memory not tight, q8 speed-neutral).
+
 ## Task 6
 
 ## Task 8
