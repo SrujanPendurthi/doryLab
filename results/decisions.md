@@ -20,7 +20,7 @@
 - q8_0 KV (k=4): slots=1 gen 7.98 vs 8.34 tok/s (-4.4%), agg 5.86 vs 6.09 (-3.7%); slots=4 gen 5.41 vs 5.03 (+7.5%), agg 10.96 vs 11.03 (-0.7%). Net about neutral; RSS 8.0 vs 9.6 GB (slots 1), 8.9 vs 10.3 GB (slots 4).
 - Memory gate (scripts/memgate.py, controller ruling: system-wide delta, not summed RSS): 4 servers (k=1,2,4 + k=1 embeddings, slots=1) all healthy and each served one ~1.2k-token request. Used (active+wired+compressor) 11.60 -> 17.53 GB = +5.93 GB (<= 16 GB); swap used 18752.75 -> 18752.75 MB = +0 MB (<= 1 GB); memory_pressure free 82% -> 60%. PASS. Summed RSS 17.7 GB (4.2/4.5/5.0/4.0) is an over-count of the shared mmap'd GGUF. footprint phys_footprint 0.5-1.4 GB per process. Note: baseline swap was already 18.8 GB used before the run (pre-existing, other project).
 - Lookup (scripts/lookup_bench.py): llama-server supports n-gram drafting (`--spec-type ngram-simple`), so llama-lookup was not needed. k=2, slots=1, greedy, 10 MBPP prompts with the reference solution as code context ("rewrite with type hints and docstring"), 1224 generated tokens total: plain 16.33 tok/s vs ngram-simple 12.08 tok/s = 0.74x (draft_n 90, accepted 14); outputs identical 10/10. LOOKUP_FOR_CODE = false (needs >= 1.15x).
-- Note: pre-existing failing test tests/test_policy.py::test_text_features_shape_real (transformers config load of a model; fails on the base commit too, unrelated).
+- Note (resolved): tests/test_policy.py::test_text_features_shape_real failed at the time. It passes since the Task 8 classifier-load fix.
 
 ## Task 5
 
@@ -105,6 +105,17 @@ text (failed gate, reference) | 0.630 | 1.94 | 20.43 | +0.010 [-0.020, +0.040]
 - Fixed k=1 for non-code and k=2 for code ties fixed2 on final (0.620) at 12.5 s vs 20.3 s, about 38% less latency. On holdout it was 60.7 vs 58.7. That comparison came after seeing holdout, so it is a recommendation, not a validated result.
 - The oracle (0.670 at 12.6 s) shows per-prompt headroom of about 5 pts that neither text features nor last-token hidden states captured.
 
+- **Caveat (final review): mmlu_pro is truncation-bound.** About a third of mmlu_pro outputs hit the 512-token cap at every k: train 246/600, 236/368 and 228/325 at k=1/2/4; holdout 29/38/36. Truncated outputs almost never grade correct, so the mmlu labels largely measure whether the answer fits in 512 tokens, not loop benefit. That limits what the null result says. Per-source accuracy / modeled seconds (breakdown only, no refit):
+
+| split | subset | fixed1 | fixed2 | fixed4 | fixed1+floor | oracle |
+|---|---|---|---|---|---|---|
+| holdout | gsm8k+mbpp (200) | 0.660 / 8.4s | 0.665 / 14.8s | 0.665 / 24.2s | 0.670 / 10.4s | 0.715 / 8.8s |
+| holdout | mmlu_pro (100) | 0.480 / 14.4s | 0.430 / 26.0s | 0.500 / 44.4s | 0.480 / 14.4s | 0.580 / 15.9s |
+| final | gsm8k+mbpp (65) | 0.662 / 8.9s | 0.662 / 15.6s | 0.708 / 27.8s | 0.708 / 10.2s | 0.738 / 10.0s |
+| final | mmlu_pro (35) | 0.457 / 16.8s | 0.543 / 29.0s | 0.486 / 47.5s | 0.457 / 16.8s | 0.543 / 17.5s |
+
+- Next step before any further controller work: re-sweep mmlu_pro with max_tokens 1024 (or a short-answer prompt). Ruling AF: not done in this run, because it needs about 6+ GPU hours, and the final split's one-shot evaluation is already spent.
+
 ### Live router gate (holdout, 50 prompts: 17 gsm8k, 17 mmlu_pro, 16 mbpp; scripts/live_gate.py, results/live_gate.json)
 
 - Live accuracy 0.640 vs offline 0.640 for the same ids, 0 per-item disagreements: PASS.
@@ -112,3 +123,5 @@ text (failed gate, reference) | 0.630 | 1.94 | 20.43 | +0.010 [-0.020, +0.040]
 - Router decisions are serialized with a lock (the MPS classifier is not thread-safe).
 
 ## Task 11
+
+SKIPPED: llama.cpp has no draft-side kv override, so a k=1 draft for k=4 is impossible (Task 1 finding).
