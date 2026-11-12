@@ -89,4 +89,26 @@ probe+text | 0.590 | 2.00 | 18.27 | +0.003 [-0.023, +0.030]
 
 ## Task 10
 
+### Headline: final test (100 items: gsm8k 35, mmlu_pro 35, mbpp 30), run once, no refit, same tau
+
+policy | acc | mean_k | mean_seconds | Δacc vs fixed2 [95% CI]
+--- | --- | --- | --- | ---
+chosen=None (fixed2+floor) | 0.620 | 2.00 | 20.28 | +0.000 [+0.000, +0.000]
+fixed1 | 0.590 | 1.00 | 11.69 | -0.030 [-0.090, +0.030]
+fixed4 | 0.630 | 4.00 | 34.67 | +0.010 [-0.040, +0.060]
+oracle | 0.670 | 1.12 | 12.61 | +0.050 [+0.010, +0.100]
+fixed1+code floor (comparison) | 0.620 | 1.30 | 12.51 | +0.000 [-0.050, +0.050]
+text (failed gate, reference) | 0.630 | 1.94 | 20.43 | +0.010 [-0.020, +0.040]
+
+- Chosen policy (None = fixed k=2 + code floor): acc 0.620, mean 20.3 modeled s.
+- Neither learned controller (text, probe) beat fixed k=2 on holdout, and on final text is +1.0 pt (CI -2 to +4), which is noise.
+- Fixed k=1 for non-code and k=2 for code ties fixed2 on final (0.620) at 12.5 s vs 20.3 s, about 38% less latency. On holdout it was 60.7 vs 58.7. That comparison came after seeing holdout, so it is a recommendation, not a validated result.
+- The oracle (0.670 at 12.6 s) shows per-prompt headroom of about 5 pts that neither text features nor last-token hidden states captured.
+
+### Live router gate (holdout, 50 prompts: 17 gsm8k, 17 mmlu_pro, 16 mbpp; scripts/live_gate.py, results/live_gate.json)
+
+- Live accuracy 0.640 vs offline 0.640 for the same ids, 0 per-item disagreements: PASS.
+- Controller overhead: text policy 59.6 ms mean (> 50 ms: FAIL), live chosen None policy 43.5 ms. The None policy still runs the NVIDIA classifier just to detect code for max_tokens and the floor. Ruling AE: not fixing, since the text policy is not deployed and 44-60 ms is about 0.3% of a ~20 s request.
+- Router decisions are serialized with a lock (the MPS classifier is not thread-safe).
+
 ## Task 11

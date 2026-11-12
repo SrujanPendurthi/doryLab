@@ -1,0 +1,12 @@
+{
+ "n": 50,
+ "live_acc": 0.64,
+ "offline_acc": 0.64,
+ "ks": [
+  2
+ ],
+ "overhead_ms_text_policy": 59.62265250273049,
+ "overhead_ms_live_none": 43.542467600200325,
+ "disagree": [],
+ "gate": false
+}

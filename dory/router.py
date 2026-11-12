@@ -1,5 +1,6 @@
 """Per-request loop-count router: pick k from the prompt, send it to the llama-server running that k."""
 import argparse
+import threading
 import time
 from pathlib import Path
 
@@ -25,6 +26,7 @@ class Router:
         self._servers: list[Server] = []
         self.servers: dict[int, Server] = {}
         self.probe_url = None
+        self._lock = threading.Lock()  # MPS classifier is not thread-safe; serialize decisions
         try:
             for k in self.ks:
                 self.servers[k] = self._start(server_args(gguf, k, free_port(), slots=slots, kv_type=kv_type))
@@ -46,7 +48,8 @@ class Router:
 
     def _decide(self, prompt: str) -> tuple[int, float, bool]:
         t0 = time.perf_counter()
-        X, is_code, _ = text_features([prompt])
+        with self._lock:
+            X, is_code, _ = text_features([prompt])
         if self.policy is None:
             k = int(choose_k(np.array([[0, 1, 0]]), is_code, 1.0)[0])  # fixed k=2, code floor is moot
         else:
