@@ -76,3 +76,15 @@ def test_load_deterministic(monkeypatch):
     monkeypatch.setattr(ev, "_ds", lambda s, sp: rows)
     a, b = ev.load("gsm8k", "test", 10), ev.load("gsm8k", "test", 10)
     assert [i.id for i in a] == [i.id for i in b]
+
+
+@pytest.mark.parametrize("out", ["answer: C", "Answer: C", "answer is: C", "The answer is **C**",
+                                 "**Answer: C**", "answer is **(C)**"])
+def test_mmlu_formats(out):
+    assert grade(Item("x", "mmlu_pro", "q", "C"), out)
+
+
+def test_mbpp_plain_fence_fallback():
+    assert grade(mbpp(["assert f()==1"]), "```\ndef f(): return 1\n```")
+    # python block wins over a later plain block
+    assert grade(mbpp(["assert f()==1"]), "```python\ndef f(): return 1\n```\n```\nnot code\n```")
