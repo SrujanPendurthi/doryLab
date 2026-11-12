@@ -2,6 +2,7 @@ import json
 import os
 import socket
 import subprocess
+import tempfile
 import time
 import urllib.request
 from pathlib import Path
@@ -26,17 +27,25 @@ def _cli(gguf, k):
 
 
 def test_loops_change_output(gguf):
-    assert _cli(gguf, 1) != _cli(gguf, 4)
+    a = _cli(gguf, 1)
+    assert a == _cli(gguf, 1), "K=1 not deterministic"
+    assert a != _cli(gguf, 4)
 
 
 def test_embedding_endpoint(gguf):
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
+    err = tempfile.TemporaryFile()
     p = subprocess.Popen(
         [str(BIN / "llama-server"), "-m", str(gguf), "--port", str(port),
          "--override-kv", "dory.num_loops=int:1", "--embeddings", "--pooling", "last",
-         "-ngl", "99"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+         "-ngl", "99"], stdout=subprocess.DEVNULL, stderr=err)
+
+    def tail():
+        err.seek(0)
+        return err.read()[-2000:].decode(errors="replace")
+
     try:
         url = f"http://127.0.0.1:{port}"
         for _ in range(120):
@@ -44,8 +53,10 @@ def test_embedding_endpoint(gguf):
                 urllib.request.urlopen(url + "/health", timeout=2)
                 break
             except Exception:
-                assert p.poll() is None, "server died"
+                assert p.poll() is None, "server died: " + tail()
                 time.sleep(1)
+        else:
+            pytest.fail("server not healthy: " + tail())
         req = urllib.request.Request(url + "/embedding", json.dumps({"content": "hello"}).encode(),
                                      {"Content-Type": "application/json"})
         out = json.load(urllib.request.urlopen(req, timeout=60))
