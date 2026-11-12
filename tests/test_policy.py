@@ -72,3 +72,9 @@ def test_text_features_shape_real():
     from dory.features import text_features
     X, is_code, seconds = text_features(["Write a Python script that uses a for loop.", "What is 2+2?"])
     assert X.shape == (2, 9) and is_code.shape == (2,) and seconds.shape == (2,)
+
+
+def test_text_features_empty():
+    from dory.features import text_features
+    X, is_code, seconds = text_features([])
+    assert X.shape == (0, 9) and is_code.shape == (0,) and seconds.shape == (0,)
