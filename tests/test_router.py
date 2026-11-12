@@ -75,3 +75,22 @@ def test_generate_routes_and_max_tokens(monkeypatch):
     assert calls[-1] == ("http://k1", 512)
     r.generate("hi", 5)
     assert calls[-1][1] == 5
+
+
+def _counting(monkeypatch, r):
+    n = []
+
+    def tf(p):
+        n.append(1)
+        return np.zeros((len(p), 9)), np.array([False]), np.zeros(len(p))
+    monkeypatch.setattr(R, "text_features", tf)
+    monkeypatch.setattr(R, "complete", lambda url, p, mt: mt)
+    return n
+
+
+def test_no_policy_skips_classifier(monkeypatch):
+    r = _router(monkeypatch, False, None)
+    n = _counting(monkeypatch, r)
+    assert r.decide("hi")[0] == 2 and not n
+    assert r.generate("hi", 100) == (100, 2) and not n
+    assert r.generate("hi") == (512, 2) and len(n) == 1

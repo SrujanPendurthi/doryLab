@@ -76,7 +76,7 @@ def run_sweep(items, ks, variant, gguf, out, slots, kv_type="f16", lazy=False):
                         c = complete(srv.url, it.prompt, MAX_TOKENS[it.source])
                         r.update(output=c.text, n_prompt=c.n_prompt, n_gen=c.n_gen)
                         try:
-                            r["correct"] = bool(grade(it, c.text))
+                            r["correct"] = bool(grade(it, c.text, c.n_gen >= MAX_TOKENS[it.source]))
                         except Exception as e:
                             r["error"] = f"grade: {e}"
                     except ServerError as e:

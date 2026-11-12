@@ -55,7 +55,7 @@ def test_error_row_recorded(monkeypatch, tmp_path):
 
 def test_grade_exception_recorded(monkeypatch, tmp_path):
     monkeypatch.setattr(sw, "complete", lambda *a, **kw: SimpleNamespace(text="t", n_prompt=1, n_gen=1))
-    monkeypatch.setattr(sw, "grade", lambda it, o: 1 / 0)
+    monkeypatch.setattr(sw, "grade", lambda it, o, t=False: 1 / 0)
     patch_server(monkeypatch, [])
     out = tmp_path / "o.jsonl"
     sw.run_sweep([mk(0)], [1], "q5", tmp_path / "g", out, 1)
@@ -72,7 +72,7 @@ def test_lazy_run_sweep(monkeypatch, tmp_path):
 
     monkeypatch.setattr(sw, "complete", fake)
     # i0 correct already at k=1; i1 only correct at k=2
-    monkeypatch.setattr(sw, "grade", lambda it, o: it.id == "i0" or o == "k2")
+    monkeypatch.setattr(sw, "grade", lambda it, o, t=False: it.id == "i0" or o == "k2")
     patch_server(monkeypatch, started)
     out = tmp_path / "o.jsonl"
     sw.run_sweep([mk(0), mk(1)], [1, 2], "q5", tmp_path / "g", out, 2, lazy=True)
@@ -89,7 +89,7 @@ def test_resume_after_torn_line(monkeypatch, tmp_path):
     out = tmp_path / "o.jsonl"
     out.write_text('{"id": "x", "k"')
     monkeypatch.setattr(sw, "complete", lambda *a, **kw: SimpleNamespace(text="t", n_prompt=1, n_gen=1))
-    monkeypatch.setattr(sw, "grade", lambda it, o: True)
+    monkeypatch.setattr(sw, "grade", lambda it, o, t=False: True)
     patch_server(monkeypatch, [])
     sw.run_sweep([mk(0)], [1], "q5", tmp_path / "g", out, 1)
     assert [r["id"] for r in sw.read_rows(out)] == ["i0"]

@@ -48,11 +48,11 @@ class Router:
 
     def _decide(self, prompt: str) -> tuple[int, float, bool]:
         t0 = time.perf_counter()
-        with self._lock:
-            X, is_code, _ = text_features([prompt])
-        if self.policy is None:
-            k = int(choose_k(np.array([[0, 1, 0]]), is_code, 1.0)[0])  # fixed k=2, code floor is moot
+        if self.policy is None:  # fixed k=2: classifier only matters for is_code (max_tokens), see generate
+            return 2, time.perf_counter() - t0, False
         else:
+            with self._lock:
+                X, is_code, _ = text_features([prompt])
             if self.feature_set != "text":
                 from dory.probe import probe_features  # lazy: only probe policies need it
                 P = probe_features([prompt], self.probe_url)
@@ -63,6 +63,9 @@ class Router:
     def generate(self, prompt: str, max_tokens: int | None = None) -> tuple[Completion, int]:
         k, _, is_code = self._decide(prompt)
         if max_tokens is None:
+            if self.policy is None:
+                with self._lock:
+                    is_code = bool(text_features([prompt])[1][0])
             max_tokens = 768 if is_code else 512  # mbpp 768, others 512
         return complete(self.servers[k].url, prompt, max_tokens), k
 
