@@ -15,13 +15,13 @@ LOOKUP_ARGS: list[str] = []  # filled from Task 3 results once n-gram lookup sup
 
 
 class Router:
-    def __init__(self, policy_path: Path | None, gguf: Path, kv_type: str, ks=KS, slots: int = 4,
+    def __init__(self, policy_path: Path | None, gguf: Path, kv_type: str, slots: int = 4,
                  lookup_for_code: bool = False):
         if lookup_for_code and not LOOKUP_ARGS:
             raise NotImplementedError("lookup_for_code needs LOOKUP_ARGS from Task 3")
         self.policy = load_policy(policy_path) if policy_path else None
         self.feature_set = self.policy["feature_set"] if self.policy else "text"
-        self.ks = list(ks) if self.policy else [2]  # no policy: fixed k=2
+        self.ks = list(KS) if self.policy else [2]  # no policy: fixed k=2
         self._servers: list[Server] = []
         self.servers: dict[int, Server] = {}
         self.probe_url = None
@@ -42,6 +42,9 @@ class Router:
         return s
 
     def decide(self, prompt: str) -> tuple[int, float]:
+        return self._decide(prompt)[:2]
+
+    def _decide(self, prompt: str) -> tuple[int, float, bool]:
         t0 = time.perf_counter()
         X, is_code, _ = text_features([prompt])
         if self.policy is None:
@@ -51,12 +54,13 @@ class Router:
                 from dory.probe import probe_features  # lazy: only probe policies need it
                 P = probe_features([prompt], self.probe_url)
                 X = P if self.feature_set == "probe" else np.hstack([P, X])
-            k = int(choose_k(proba_for_ks(self.policy["model"], X), is_code, self.policy["tau"],
-                             ks=self.ks)[0])
-        return k, time.perf_counter() - t0
+            k = int(choose_k(proba_for_ks(self.policy["model"], X), is_code, self.policy["tau"])[0])
+        return k, time.perf_counter() - t0, bool(is_code[0])
 
-    def generate(self, prompt: str, max_tokens: int = 512) -> tuple[Completion, int]:
-        k, _ = self.decide(prompt)
+    def generate(self, prompt: str, max_tokens: int | None = None) -> tuple[Completion, int]:
+        k, _, is_code = self._decide(prompt)
+        if max_tokens is None:
+            max_tokens = 768 if is_code else 512  # mbpp 768, others 512
         return complete(self.servers[k].url, prompt, max_tokens), k
 
     def close(self):
@@ -82,7 +86,7 @@ def main():
     a = ap.parse_args()
     with Router(a.policy, a.gguf, a.kv) as r:
         k, secs = r.decide(a.prompt)
-        c = complete(r.servers[k].url, a.prompt, 512)
+        c, _ = r.generate(a.prompt)
         print(f"k={k} controller={secs * 1000:.1f} ms gen={c.gen_tps:.1f} tok/s\n{c.text}")
 
 

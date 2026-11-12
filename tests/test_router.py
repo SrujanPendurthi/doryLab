@@ -38,3 +38,40 @@ def test_decide_code_floor(monkeypatch):
 
 def test_no_policy_defaults_k2(monkeypatch):
     assert _router(monkeypatch, False, None).decide("2+2?")[0] == 2
+
+
+def test_startup_failure_stops_started(monkeypatch):
+    stopped, n = [], []
+
+    class Flaky(FakeServer):
+        def __init__(self, *a, **k):
+            n.append(1)
+            if len(n) == 2:
+                raise RuntimeError("boom")
+            self.url = "u"
+
+        def stop(self):
+            stopped.append(self)
+
+    monkeypatch.setattr(R, "Server", Flaky)
+    monkeypatch.setattr(R, "load_policy", lambda p: {"kind": "lr", "model": FavourK1(), "tau": 0.5,
+                                                    "feature_set": "text"})
+    import pytest
+    with pytest.raises(RuntimeError):
+        R.Router(Path("p"), Path("m"), "f16")
+    assert len(stopped) == 1
+
+
+def test_generate_routes_and_max_tokens(monkeypatch):
+    pol = {"kind": "lr", "model": FavourK1(), "tau": 0.5, "feature_set": "text"}
+    calls = []
+    monkeypatch.setattr(R, "complete", lambda url, p, m: calls.append((url, m)) or "c")
+    r = _router(monkeypatch, True, pol)
+    r.servers[2].url = "http://k2"
+    assert r.generate("code") == ("c", 2) and calls[-1] == ("http://k2", 768)
+    r = _router(monkeypatch, False, pol)
+    r.servers[1].url = "http://k1"
+    r.generate("hi")
+    assert calls[-1] == ("http://k1", 512)
+    r.generate("hi", 5)
+    assert calls[-1][1] == 5
