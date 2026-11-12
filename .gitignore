@@ -1,0 +1,8 @@
+vendor/
+models/
+.venv/
+__pycache__/
+*.pyc
+.superpowers/
+.worktrees/
+.DS_Store
