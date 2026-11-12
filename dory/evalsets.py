@@ -71,13 +71,21 @@ def load_split(name: str) -> list[Item]:
     raise KeyError(name)
 
 
+def _f(s):
+    try:
+        return float(s.replace(",", ""))
+    except ValueError:
+        return None
+
+
 def _num(s):
-    m = re.findall(r"-?\d+(?:\.\d+)?", s.replace(",", ""))
-    return float(m[-1]) if m else None
+    m = re.findall(r"answer is\s*\$?\s*(-?[\d,]*\.?\d+)", s, re.I)
+    m = m or re.findall(r"(?<!\d)-?\d[\d,]*(?:\.\d+)?", s)
+    return _f(m[-1]) if m else None
 
 
 def _mbpp(item, output):
-    blocks = re.findall(r"```python\n(.*?)```", output, re.S)
+    blocks = re.findall(r"```(?:python|py)[ \t]*\r?\n(.*?)```", output, re.I | re.S)
     if not blocks or not item.tests:
         return False
     prog = blocks[-1] + "\n" + "\n".join(item.tests) + "\n"
@@ -96,9 +104,9 @@ def grade(item: Item, output: str) -> bool:
         got, gold = _num(output), _num(item.gold)
         return got is not None and gold is not None and got == gold
     if item.source == "mmlu_pro":
-        m = re.findall(r"answer is \(?([A-J])\)?", output)
+        m = re.findall(r"(?i:answer is)\s*\(?([A-J])\)?(?![A-Za-z])", output)
         if not m:
             lines = output.strip().splitlines()
-            m = re.findall(r"\b([A-J])\b", lines[-1]) if lines else []
+            m = re.findall(r"^\W*\(?\**([A-J])\**\)?\W*$", lines[-1]) if lines else []
         return bool(m) and m[-1] == item.gold
     return _mbpp(item, output)
