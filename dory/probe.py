@@ -69,7 +69,7 @@ def main():
     Xt_ho, code_ho, text_secs = text_features(prompts["holdout"])
     T = {"train": Xt_tr, "holdout": Xt_ho}
     keep = np.array([r["label_k"] is not None for r in train])
-    y = np.array([r["label_k"] for r in train])[keep]
+    y = np.array([r["label_k"] for r in train])[keep].astype(int)
     tax = probe_seconds(hold, speed)
     pols = {f"fixed{k}": (fixed(hold, k), None) for k in KS}
     pols["oracle"] = (oracle(hold), None)

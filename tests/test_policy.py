@@ -97,9 +97,9 @@ def test_main_text(tmp_path, monkeypatch):
     def rows(n, p):
         out = []
         for i in range(n):
-            y = [1, 2, 4][i % 3]
-            out.append({"id": f"{p}{i}", "source": "gsm8k", "prompt": str(y), "label_k": y,
-                        "correct_by_k": {str(k): k >= y for k in (1, 2, 4)},
+            y = [1, 2, 4, None][i % 4]  # None = wrong at every k (real labels have these)
+            out.append({"id": f"{p}{i}", "source": "gsm8k", "prompt": str(y or 0), "label_k": y,
+                        "correct_by_k": {str(k): y is not None and k >= y for k in (1, 2, 4)},
                         "tokens_by_k": {str(k): [10, 5] for k in (1, 2, 4)}})
         return out
     for s, n in (("train", 30), ("holdout", 12)):

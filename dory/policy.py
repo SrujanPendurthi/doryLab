@@ -80,7 +80,7 @@ def main(argv=None):
     Xho, code_ho, secs = text_features([r["prompt"] for r in hold])
     np.save(R / "features_text_holdout.npy", Xho)  # X only: probe.py hstacks it
     keep = np.array([r["label_k"] is not None for r in train])
-    model = fit(Xtr[keep], np.array([r["label_k"] for r in train])[keep], cv=True)
+    model = fit(Xtr[keep], np.array([r["label_k"] for r in train])[keep].astype(int), cv=True)
     proba = proba_for_ks(model, Xho)
     tau = tau_for_mean_k(proba, code_ho, 2.0)
     save_policy(R / "policy_text.joblib", "text", model, tau, feature_set="text")
