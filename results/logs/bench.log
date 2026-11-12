@@ -1,0 +1,12 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+{'k': 1, 'slots': 1, 'kv': 'f16', 'gen_tps_per_req': 23.26142414646847, 'agg_tps': 17.33084081328201, 'prompt_tps': 280.98750087085654, 'mean_n_prompt': 1199.75, 'rss_mb': 6722.0625}
+{'k': 1, 'slots': 4, 'kv': 'f16', 'gen_tps_per_req': 13.188226116653132, 'agg_tps': 26.42502687003327, 'prompt_tps': 53.04835612544806, 'mean_n_prompt': 1199.75, 'rss_mb': 7320.453125}
+{'k': 1, 'slots': 8, 'kv': 'f16', 'gen_tps_per_req': 9.055880099476262, 'agg_tps': 36.04630591891329, 'prompt_tps': 38.44241793782652, 'mean_n_prompt': 1199.75, 'rss_mb': 7660.515625}
+{'k': 2, 'slots': 1, 'kv': 'f16', 'gen_tps_per_req': 13.556389860361932, 'agg_tps': 9.729494620082669, 'prompt_tps': 149.84980133265714, 'mean_n_prompt': 1199.75, 'rss_mb': 8394.484375}
+{'k': 2, 'slots': 4, 'kv': 'f16', 'gen_tps_per_req': 8.174861098102323, 'agg_tps': 17.711942341736687, 'prompt_tps': 58.442913263716875, 'mean_n_prompt': 1199.75, 'rss_mb': 9223.828125}
+{'k': 2, 'slots': 8, 'kv': 'f16', 'gen_tps_per_req': 4.343161492161839, 'agg_tps': 18.279904552564656, 'prompt_tps': 32.78520572874577, 'mean_n_prompt': 1199.75, 'rss_mb': 7830.125}
+{'k': 4, 'slots': 1, 'kv': 'f16', 'gen_tps_per_req': 8.341030615948563, 'agg_tps': 6.089511700477497, 'prompt_tps': 89.97026152575012, 'mean_n_prompt': 1199.75, 'rss_mb': 9598.140625}
+{'k': 4, 'slots': 4, 'kv': 'f16', 'gen_tps_per_req': 5.0310455049692795, 'agg_tps': 11.028460452417335, 'prompt_tps': 26.453621898351937, 'mean_n_prompt': 1199.75, 'rss_mb': 10316.265625}
+{'k': 4, 'slots': 8, 'kv': 'f16', 'gen_tps_per_req': 3.355455056460255, 'agg_tps': 13.396346391654278, 'prompt_tps': 16.749157619663947, 'mean_n_prompt': 1199.75, 'rss_mb': 12046.6875}
+{'k': 4, 'slots': 1, 'kv': 'q8_0', 'gen_tps_per_req': 7.975280673171152, 'agg_tps': 5.8647428009992755, 'prompt_tps': 87.92773955801874, 'mean_n_prompt': 1199.75, 'rss_mb': 7994.5625}
+{'k': 4, 'slots': 4, 'kv': 'q8_0', 'gen_tps_per_req': 5.408325984664511, 'agg_tps': 10.955324171821017, 'prompt_tps': 22.14058131375833, 'mean_n_prompt': 1199.75, 'rss_mb': 8864.15625}

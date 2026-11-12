@@ -1,0 +1,5 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+plain {'gen_tps': 16.330977140425382, 'tokens': 1224, 'secs': 84.70267391204834, 'draft_n': 0, 'draft_acc': 0}
+ngram-simple {'gen_tps': 12.081962657033959, 'tokens': 1224, 'secs': 112.72897696495056, 'draft_n': 90, 'draft_acc': 14}
+speedup (mean gen_tps): 0.7398187232242524
+same outputs: 10 /10

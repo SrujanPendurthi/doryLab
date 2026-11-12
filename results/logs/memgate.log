@@ -1,0 +1,48 @@
+before: System-wide memory free percentage: 82% used=11.60GB swap=18752.75MB
+after: System-wide memory free percentage: 60% used=17.53GB swap=18752.75MB
+DELTA used=5.93GB swap_growth=0MB
+RSS MB: [4178, 4454, 5026, 4007] sum 17665
+1 False ONT_DATA
+    0 B        0 B          0 B          1    IOSurface
+    0 B        0 B          0 B          1    __OBJC_RO
+    ---        ---          ---        ---    ---
+ 604 MB    3536 MB        33 MB       3973    TOTAL
+
+Auxiliary data:
+    phys_footprint: 604 MB
+    phys_footprint_peak: 652 MB
+
+
+2 False ONT_DATA
+    0 B        0 B          0 B          1    IOSurface
+    0 B        0 B          0 B          1    __OBJC_RO
+    ---        ---          ---        ---    ---
+ 877 MB    3536 MB        37 MB       4115    TOTAL
+
+Auxiliary data:
+    phys_footprint: 877 MB
+    phys_footprint_peak: 929 MB
+
+
+4 False T_DATA
+    0 B        0 B          0 B          1    IOSurface
+    0 B        0 B          0 B          1    __OBJC_RO
+    ---        ---          ---        ---    ---
+1434 MB    3536 MB        74 MB       4458    TOTAL
+
+Auxiliary data:
+    phys_footprint: 1434 MB
+    phys_footprint_peak: 1494 MB
+
+
+1 True ONT_DATA
+    0 B        0 B          0 B          1    IOSurface
+    0 B        0 B          0 B          1    __OBJC_RO
+    ---        ---          ---        ---    ---
+ 474 MB    3535 MB        33 MB       4043    TOTAL
+
+Auxiliary data:
+    phys_footprint: 474 MB
+    phys_footprint_peak: 474 MB
+
+
