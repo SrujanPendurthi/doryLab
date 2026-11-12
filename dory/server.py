@@ -7,7 +7,8 @@ import urllib.request
 from pathlib import Path
 
 # repo root = parent of the `dory` package dir (works from a worktree too)
-_BIN = Path(os.environ.get("DORY_LLAMA_BIN") or Path(__file__).resolve().parent.parent / "vendor/llama.cpp/build/bin")
+def _bin() -> Path:
+    return Path(os.environ.get("DORY_LLAMA_BIN") or Path(__file__).resolve().parent.parent / "vendor/llama.cpp/build/bin")
 
 
 def free_port() -> int:
@@ -33,20 +34,24 @@ class Server:
         self.url = f"http://127.0.0.1:{port}"
         self._err = tempfile.TemporaryFile()
         try:
-            self._p = subprocess.Popen([str(_BIN / "llama-server"), *args], stdout=subprocess.DEVNULL, stderr=self._err)
+            self._p = subprocess.Popen([str(_bin() / "llama-server"), *args], stdout=subprocess.DEVNULL, stderr=self._err)
         except OSError as e:  # missing binary
             self._err.close()
             raise RuntimeError(f"cannot start llama-server: {e}") from e
         self.pid = self._p.pid
-        end = time.time() + startup_timeout
-        while True:
-            if self._p.poll() is not None:
-                self._fail(f"llama-server exited with {self._p.returncode}")
-            if self._healthy():
-                return
-            if time.time() > end:
-                self._fail(f"llama-server not ready after {startup_timeout}s")
-            time.sleep(0.25)
+        try:
+            end = time.time() + startup_timeout
+            while True:
+                if self._p.poll() is not None:
+                    self._fail(f"llama-server exited with {self._p.returncode}")
+                if self._healthy():
+                    return
+                if time.time() > end:
+                    self._fail(f"llama-server not ready after {startup_timeout}s")
+                time.sleep(0.25)
+        except BaseException:  # incl. KeyboardInterrupt: never orphan the child
+            self.stop()
+            raise
 
     def _healthy(self) -> bool:
         try:
@@ -56,8 +61,9 @@ class Server:
             return False
 
     def _fail(self, msg: str):
+        tail = self._tail()
         self.stop()
-        raise RuntimeError(f"{msg}; stderr tail:\n{self._tail()}")
+        raise RuntimeError(f"{msg}; stderr tail:\n{tail}")
 
     def _tail(self) -> str:
         self._err.seek(0)
@@ -74,6 +80,7 @@ class Server:
             except subprocess.TimeoutExpired:
                 self._p.kill()
                 self._p.wait()
+        self._err.close()  # idempotent
 
     def __enter__(self):
         return self

@@ -38,3 +38,31 @@ def test_real_server_completes(gguf):
     p = free_port()
     with Server(server_args(gguf, 1, p), p) as s:
         assert complete(s.url, "2+2=", 8).n_gen > 0
+
+
+def test_stop_idempotent_closes_stderr(monkeypatch, tmp_path):
+    monkeypatch.setenv("DORY_LLAMA_BIN", str(tmp_path))
+    (tmp_path / "llama-server").write_text("#!/bin/sh\nexec sleep 60\n")
+    (tmp_path / "llama-server").chmod(0o755)
+    monkeypatch.setattr(Server, "_healthy", lambda self: True)
+    s = Server([], 1)
+    s.stop()
+    s.stop()
+    assert s._err.closed and s._p.poll() is not None
+
+
+def test_interrupt_during_startup_stops_child(monkeypatch, tmp_path):
+    monkeypatch.setenv("DORY_LLAMA_BIN", str(tmp_path))
+    (tmp_path / "llama-server").write_text("#!/bin/sh\nexec sleep 60\n")
+    (tmp_path / "llama-server").chmod(0o755)
+    made = []
+    orig = Server.stop
+    monkeypatch.setattr(Server, "stop", lambda self: (made.append(self), orig(self)))
+
+    def boom(self):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(Server, "_healthy", boom)
+    with pytest.raises(KeyboardInterrupt):
+        Server([], 1)
+    assert made and made[0]._p.poll() is not None
