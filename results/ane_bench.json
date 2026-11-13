@@ -1,0 +1,222 @@
+{
+ "failures": [],
+ "rss_mb_pytorch_cpu_load": 899.5625,
+ "token_lengths": {
+  "min": 45,
+  "median": 67.5,
+  "p90": 92,
+  "max": 146,
+  "n_le_128": 59,
+  "n_gt_128": 1
+ },
+ "latency": {
+  "pytorch_cpu": {
+   "median_ms": 44.799916533520445,
+   "p90_ms": 56.52525002369657
+  },
+  "pytorch_mps": {
+   "median_ms": 44.267396500799805,
+   "p90_ms": 48.981000029016286
+  }
+ },
+ "converted_buckets": [
+  128,
+  512
+ ],
+ "coreml": {
+  "CPU_AND_NE": {
+   "load_s": 15.58987345796777,
+   "rss_delta_mb": 2079.84375,
+   "latency": {
+    "median_ms": 17.88741652853787,
+    "p90_ms": 18.234957999084145
+   },
+   "parity": {
+    "per_head": [
+     {
+      "argmax_agree": 1.0,
+      "max_abs_logit_diff": 0.024474143981933594
+     },
+     {
+      "argmax_agree": 1.0,
+      "max_abs_logit_diff": 0.017489910125732422
+     },
+     {
+      "argmax_agree": 1.0,
+      "max_abs_logit_diff": 0.01414632797241211
+     },
+     {
+      "argmax_agree": 1.0,
+      "max_abs_logit_diff": 0.010367393493652344
+     },
+     {
+      "argmax_agree": 1.0,
+      "max_abs_logit_diff": 0.015885353088378906
+     },
+     {
+      "argmax_agree": 1.0,
+      "max_abs_logit_diff": 0.017162203788757324
+     },
+     {
+      "argmax_agree": 1.0,
+      "max_abs_logit_diff": 0.008625388145446777
+     },
+     {
+      "argmax_agree": 1.0,
+      "max_abs_logit_diff": 0.016149520874023438
+     }
+    ],
+    "feature_X_max_abs_diff": 0.0037999999999999146,
+    "is_code_agree": 1.0
+   }
+  },
+  "CPU_AND_GPU": {
+   "load_s": 13.891162000014447,
+   "rss_delta_mb": 2829.828125,
+   "latency": {
+    "median_ms": 12.164646002929658,
+    "p90_ms": 12.494958005845547
+   },
+   "parity": {
+    "per_head": [
+     {
+      "argmax_agree": 0.0,
+      "max_abs_logit_diff": NaN
+     },
+     {
+      "argmax_agree": 0.0,
+      "max_abs_logit_diff": NaN
+     },
+     {
+      "argmax_agree": 0.38333332538604736,
+      "max_abs_logit_diff": NaN
+     },
+     {
+      "argmax_agree": 1.0,
+      "max_abs_logit_diff": NaN
+     },
+     {
+      "argmax_agree": 1.0,
+      "max_abs_logit_diff": NaN
+     },
+     {
+      "argmax_agree": 0.0,
+      "max_abs_logit_diff": NaN
+     },
+     {
+      "argmax_agree": 1.0,
+      "max_abs_logit_diff": NaN
+     },
+     {
+      "argmax_agree": 1.0,
+      "max_abs_logit_diff": NaN
+     }
+    ],
+    "feature_X_max_abs_diff": NaN,
+    "is_code_agree": 1.0
+   }
+  },
+  "CPU_ONLY": {
+   "load_s": 5.413210958009586,
+   "rss_delta_mb": 1338.546875,
+   "latency": {
+    "median_ms": 20.338666974566877,
+    "p90_ms": 20.622792013455182
+   },
+   "parity": {
+    "per_head": [
+     {
+      "argmax_agree": 0.0,
+      "max_abs_logit_diff": NaN
+     },
+     {
+      "argmax_agree": 0.0,
+      "max_abs_logit_diff": NaN
+     },
+     {
+      "argmax_agree": 0.38333332538604736,
+      "max_abs_logit_diff": NaN
+     },
+     {
+      "argmax_agree": 1.0,
+      "max_abs_logit_diff": NaN
+     },
+     {
+      "argmax_agree": 1.0,
+      "max_abs_logit_diff": NaN
+     },
+     {
+      "argmax_agree": 0.0,
+      "max_abs_logit_diff": NaN
+     },
+     {
+      "argmax_agree": 1.0,
+      "max_abs_logit_diff": NaN
+     },
+     {
+      "argmax_agree": 1.0,
+      "max_abs_logit_diff": NaN
+     }
+    ],
+    "feature_X_max_abs_diff": NaN,
+    "is_code_agree": 1.0
+   }
+  },
+  "ALL": {
+   "load_s": 22.64257500000531,
+   "rss_delta_mb": 2273.375,
+   "latency": {
+    "median_ms": 14.122208522167057,
+    "p90_ms": 15.666832972783595
+   },
+   "parity": {
+    "per_head": [
+     {
+      "argmax_agree": 0.01666666753590107,
+      "max_abs_logit_diff": NaN
+     },
+     {
+      "argmax_agree": 0.01666666753590107,
+      "max_abs_logit_diff": NaN
+     },
+     {
+      "argmax_agree": 0.4000000059604645,
+      "max_abs_logit_diff": NaN
+     },
+     {
+      "argmax_agree": 1.0,
+      "max_abs_logit_diff": NaN
+     },
+     {
+      "argmax_agree": 1.0,
+      "max_abs_logit_diff": NaN
+     },
+     {
+      "argmax_agree": 0.01666666753590107,
+      "max_abs_logit_diff": NaN
+     },
+     {
+      "argmax_agree": 1.0,
+      "max_abs_logit_diff": NaN
+     },
+     {
+      "argmax_agree": 1.0,
+      "max_abs_logit_diff": NaN
+     }
+    ],
+    "feature_X_max_abs_diff": NaN,
+    "is_code_agree": 1.0
+   }
+  }
+ },
+ "op_placement_cpu_and_ne": {
+  "128": {
+   "MLCPUComputeDevice": 62,
+   "MLNeuralEngineComputeDevice": 454
+  },
+  "512": {
+   "MLCPUComputeDevice": 38,
+   "MLNeuralEngineComputeDevice": 478
+  }
+ }
+}
