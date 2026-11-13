@@ -105,3 +105,39 @@ def test_truncated_grading():
     assert grade(m, "reasoning\nC")
     assert grade(m, "The answer is C", truncated=True)
     assert not grade(Item("x", "mmlu_pro", "q", "J"), "- J. .")
+
+
+def test_wsp_screen_subset():
+    scr, ho = load_split("wsp_screen"), {it.id for it in load_split("holdout")}
+    assert len(scr) == 60 and all(it.id in ho for it in scr)
+    assert [sum(it.source == s for it in scr) for s in SOURCES] == [20, 20, 20]
+
+
+def test_holdout_unchanged():
+    ids = [it.id for it in load_split("holdout")]
+    assert ids[::50] == ["gsm8k:test:1101", "gsm8k:test:1011", "mmlu_pro:test:6005",
+                         "mmlu_pro:test:5573", "mbpp:test:419", "mbpp:test:116"]
+
+
+def test_wsp_final_sealed(monkeypatch):
+    monkeypatch.delenv("WSP_UNSEAL", raising=False)
+    with pytest.raises(PermissionError):
+        load_split("wsp_final")
+    monkeypatch.setenv("WSP_UNSEAL", "1")
+    fin = load_split("wsp_final")
+    used = {it.id for s in ("holdout", "final", "train") for it in load_split(s)}
+    assert len(fin) == 300 and not used & {it.id for it in fin}
+
+
+def test_arc_numeric_labels_mapped():
+    from dory.evalsets import _item
+    row = {"question": "q", "choices": {"label": ["1", "2", "3", "4"], "text": list("wxyz")}, "answerKey": "2"}
+    it = _item("arc", "test", 0, row)
+    assert it.gold == "B" and "\nA. w\nB. x\nC. y\nD. z" in it.prompt
+
+
+def test_arc_item_and_grade():
+    arc = load_split("arc")
+    assert len(arc) == 200
+    assert all(it.gold in "ABCDE" and "\nA. " in it.prompt and it.prompt.endswith("End with 'The answer is (X)'.") for it in arc)
+    assert grade(Item("arc:test:0", "arc", "q", "B"), "The answer is (B)")
