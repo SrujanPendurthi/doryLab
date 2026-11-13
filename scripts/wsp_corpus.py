@@ -192,8 +192,8 @@ def pick_lens_rows(rows, tok, items, per_source):
 
 
 def geom(model):
-    c = model.model.config
-    return c.n_input_layers, c.n_recurrent_layers, c.n_output_layers
+    c = model.model.config  # HF counts fused attn+mlp decoder layers; virtual layers are half-blocks
+    return 2 * c.n_input_layers, 2 * c.n_recurrent_layers, 2 * c.n_output_layers
 
 
 def lens_ranks(model, ids, n_prompt, t, loops):
