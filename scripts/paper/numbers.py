@@ -233,6 +233,8 @@ def compute():
         off.setdefault(r["cfg"], {})[r["id"]] = r["gen_tps"]
     ratio = [off["plain_ngl54"][i] / off["plain"][i] for i in off["plain"]]
     put("OffloadSpeedup", _gm(ratio), 2)
+    lo, hi = _ci(ratio)
+    put("OffloadLo", lo, 2); put("OffloadHi", hi, 2); put("OffloadN", len(ratio), 0)
     # decisions.md Task 3: llama-server n-gram lookup, 10 MBPP prompts, 16.33 vs 12.08 tok/s (no results file)
     put("NgramSpeedup", 12.08 / 16.33, 2)
     q8 = {i: r["correct"] for (i, _, _), r in latest_rows(read_rows(R / "sweep_holdout_q8.jsonl")).items()}
@@ -240,6 +242,10 @@ def compute():
     # q8 file covers gsm8k+mmlu_pro (200 items); regraded labels give the f16 side
     put("QEightN", len(q8), 0)
     put("QEightDelta", (sum(q8.values()) - sum(f16[i] for i in q8)) / len(q8), 3)
+    # exact McNemar (two-sided binomial on discordant pairs) q8_0 vs f16
+    from scipy.stats import binomtest
+    b = sum(f16[i] and not q8[i] for i in q8); c = sum(q8[i] and not f16[i] for i in q8)
+    put("QEightMcNemarP", binomtest(min(b, c), b + c, 0.5).pvalue, 2)
     put("QEightAcc", np.mean(list(q8.values()))); put("QSixteenAcc", np.mean([f16[i] for i in q8]))
     ane = json.loads((R / "ane_bench.json").read_text())
     put("AneMs", ane["coreml"]["CPU_AND_NE"]["latency"]["median_ms"], 1)
@@ -252,6 +258,29 @@ def compute():
     import csv
     rss = {r["kv"]: float(r["rss_mb"]) for r in csv.DictReader(open(R / "bench.csv")) if r["k"] == "4" and r["slots"] == "1"}
     put("KvSavingGb", (rss["f16"] - rss["q8_0"]) / 1024, 1)
+
+    # --- claims-audit additions ---
+    from dory.labels import non_monotone_rate
+    put("HoldoutNonMonoRate", non_monotone_rate([{**r, "correct_by_k": {int(k): v for k, v in r["correct_by_k"].items()}}
+                                                  for r in sp["holdout"]]))
+    put("TextOverheadMs", gate["overhead_ms_text_policy"], 1)
+    from dory.policy import load_policy
+    put("FinalTextTau", load_policy(_feat("policy_text.joblib"))["tau"], 4)  # refit post-regrade policy
+    put("FinalPreTextTau", "0.4326")  # decisions.md Task 10 table (pre-regrade final run)
+
+    def trunc(r, k):
+        return r["tokens_by_k"][str(k)][1] >= MAX_TOKENS[r["source"]]
+    hm = [r for r in sp["holdout"] if r["source"] == "mmlu_pro"]
+    put("HoldoutMmluN", len(hm), 0)
+    put("HoldoutMmluTruncAllK", sum(all(trunc(r, k) for k in (1, 2, 4)) for r in hm), 0)
+    put("HoldoutMmluTruncTotal", sum(trunc(r, k) for r in hm for k in (1, 2, 4)), 0)
+    put("HoldoutMmluTruncCorrect", sum(trunc(r, k) and r["correct_by_k"][str(k)] for r in hm for k in (1, 2, 4)), 0)
+    put("HoldoutMmluNone", sum(r["label_k"] is None for r in hm), 0)
+    put("HoldoutMmluNoneTrunc", sum(r["label_k"] is None and any(trunc(r, k) for k in (1, 2, 4)) for r in hm), 0)
+    for sp_name, S in (("holdout", "Holdout"), ("train", "Train")):
+        resc = [r for r in sp[sp_name] if r["source"] == "mmlu_pro" and r["label_k"] in (2, 4)]
+        put(f"{S}MmluRescued", len(resc), 0)
+        put(f"{S}MmluRescuedTruncOne", sum(trunc(r, 1) for r in resc), 0)
 
     compute.tables = (rows, T, sysrows, sp, speed)
     return V
