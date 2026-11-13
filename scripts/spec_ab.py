@@ -1,6 +1,7 @@
 """Interleaved A/B: all configs' servers up at once, configs rotated per prompt, so machine-load drift hits every arm equally.
 Settles whether self-spec n4/n6 beats plain (draft sweep ran arms hours apart)."""
 import json
+import sys
 from contextlib import ExitStack
 from pathlib import Path
 from dory.client import complete
@@ -9,7 +10,9 @@ from scripts.draft_sweep import STOCK, DRAFT, MAXTOK, pick  # noqa: E402  (draft
 
 CFGS = {"plain": ([], False), "n4": (["--spec-draft-n-max", "4"], True),
         "n6": (["--spec-draft-n-max", "6"], True)}  # ngl54 dropped: 4 servers -> Metal "Compute error"
-out = Path("results/spec_ab.jsonl")
+if sys.argv[1:] == ["offload"]:  # CPU/GPU split check: target partly on CPU (72 layers)
+    CFGS, pick = {"plain": ([], False), "plain_ngl54": (["-ngl", "54"], False)}, pick[::2]
+out = Path("results/spec_ab.jsonl" if sys.argv[1:] != ["offload"] else "results/offload_ab.jsonl")
 done = {(r["cfg"], r["id"]) for r in map(json.loads, out.open())} if out.exists() else set()
 with ExitStack() as st:
     urls = {}

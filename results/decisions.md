@@ -124,4 +124,42 @@ text (failed gate, reference) | 0.630 | 1.94 | 20.43 | +0.010 [-0.020, +0.040]
 
 ## Task 11
 
-SKIPPED: llama.cpp has no draft-side kv override, so a k=1 draft for k=4 is impossible (Task 1 finding).
+Originally SKIPPED (llama-server copies the target's kv_overrides into the draft). Unskipped as a follow-up: target = stock GGUF (metadata `dory.num_loops=4`, no override), draft = APFS clone with `dory.num_loops=1` (`scripts/make_draft.sh`), `--spec-type draft-simple --spec-draft-n-max 4`.
+
+- 100-prompt bench (`results/spec_k4.json`): acceptance 0.84, 20/20 outputs identical. Its 0.29x speed figure is an artifact: spec and plain arms ran hours apart under varying machine load.
+- Draft-length sweep (`results/draft_sweep.jsonl`, 24 holdout prompts, 256 tokens, sequential arms): n2 6.92, n4 7.54, n6 7.53, n8 6.50, n8 p-min 0.7 6.80 tok/s; k=2 draft 5.46 (n4) / 2.21 (n8); CPU draft 0.12. Per-prompt best-n_max oracle 8.02 vs fixed n4 7.54 (+6%): a confidence-driven draft length is not worth a llama.cpp patch. A clean sequential plain rerun (9.70) beat every arm, which showed sequential arms are unreliable here.
+- Interleaved A/B (`scripts/spec_ab.py`, `results/spec_ab.jsonl`; all servers up, arms rotated per prompt): plain 8.39, n4 9.88, n6 10.23 tok/s. n4 1.21x (95% CI 1.16-1.26, 22/24 prompts faster), n6 1.27x (1.19-1.34). 24/24 identical. Acceptance n4 0.84, n6 0.76.
+- Gate (acceptance >= 0.80, speedup >= 1.2x, identical): PASS with n4. Router runs the k=4 server with the draft by default (`--no-spec` disables). Moot for the chosen None policy (fixed k=2 starts no k=4 server).
+- CPU/GPU split (`results/offload_ab.jsonl`, interleaved, 12 prompts): `-ngl 54` of 72 layers 0.94x plain, same graded accuracy (4/8). Full GPU stays.
+
+## Follow-ups (2026-11-12)
+
+- q8_0 KV check (`results/sweep_holdout_q8.jsonl`, k=4, 200 gsm8k+mmlu holdout): f16 134 vs q8 131 (-1.5 pts; gsm8k 85 vs 82, mmlu 49 = 49), McNemar p=0.51. Gate (within 1.0 pt) FAIL: CHOSEN_KV stays f16. q8 saves ~1.5 GB per server if memory matters.
+- Memory gate, router config (3 k-servers at slots=4 + embedding server): +8.28 GB, swap growth 0 MB: PASS.
+- Grader made truncation-aware and re-applied (`scripts/regrade.py`): True->False on 4 holdout, 2 final, 5 train rows. Labels rebuilt: 11 of 1900 rows changed. Text policy, probe and final test rerun below (Ruling AJ: rerun allowed after a grader fix; both versions recorded). Conclusions unchanged: text policy fails its gate, probe not promoted, chosen policy None.
+- Final test after regrade: chosen fixed2+floor 0.620 (20.28 s), fixed1 0.590, fixed4 0.610 (was 0.630), oracle 0.670, fixed1+code floor 0.620 (12.51 s), text 0.630.
+
+## Task 8 (rerun after regrade)
+
+policy | acc | mean_k | mean_seconds | Δacc vs fixed2 [95% CI]
+--- | --- | --- | --- | ---
+text | 0.583 | 2.00 | 18.77 | -0.003 [-0.020, +0.013]
+fixed1 | 0.590 | 1.00 | 10.38 | +0.003 [-0.033, +0.043]
+fixed2 | 0.587 | 2.00 | 18.52 | +0.000 [+0.000, +0.000]
+fixed4 | 0.607 | 4.00 | 30.90 | +0.020 [-0.013, +0.053]
+random_matched | 0.587 | 2.00 | 18.52 | +0.000 [+0.000, +0.000]
+oracle | 0.667 | 1.12 | 11.26 | +0.080 [+0.050, +0.113]
+
+tau=0.4312 gate(FAIL): dacc=-0.003 [-0.020, +0.013], seconds 18.77 vs fixed2 18.52
+
+## Probe holdout report (kv=f16, rerun after regrade)
+
+policy | acc | mean_k | mean_seconds | Δacc vs fixed2 [95% CI]
+--- | --- | --- | --- | ---
+fixed1 | 0.590 | 1.00 | 10.38 | +0.003 [-0.033, +0.043]
+fixed2 | 0.587 | 2.00 | 18.52 | +0.000 [+0.000, +0.000]
+fixed4 | 0.607 | 4.00 | 30.90 | +0.020 [-0.013, +0.053]
+oracle | 0.667 | 1.12 | 11.26 | +0.080 [+0.050, +0.113]
+text | 0.583 | 2.00 | 18.77 | -0.003 [-0.020, +0.013]
+probe | 0.590 | 2.00 | 18.13 | +0.003 [-0.023, +0.033]
+probe+text | 0.590 | 2.00 | 18.18 | +0.003 [-0.023, +0.033]
