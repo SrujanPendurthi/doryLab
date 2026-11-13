@@ -38,3 +38,11 @@ def test_write_outputs(tmp_path):
     for f in ("numbers.tex", "numbers.json", "tab_controllers_holdout.tex", "tab_controllers_final.tex",
               "tab_per_source.tex", "tab_systems.tex", "tab_truncation.tex"):
         assert (tmp_path / f).stat().st_size > 0
+
+
+def test_text_rows_are_post_regrade(V):
+    assert V["HoldoutTextAcc"] == pytest.approx(0.583, abs=0.0005)
+    assert V["HoldoutTextDelta"] == pytest.approx(-0.003, abs=0.0005)
+    assert (V["HoldoutTextLo"], V["HoldoutTextHi"]) == pytest.approx((-0.020, 0.013), abs=0.0005)
+    assert V["FinalTextAcc"] == pytest.approx(0.630, abs=0.0005)
+    assert V["FinalTextMeanK"] != V["FinalPreTextMeanK"]  # refit after regrade: tau 0.4326 -> 0.4312

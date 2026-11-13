@@ -1,7 +1,10 @@
 """Paper numbers and tables: every result macro comes from results/ files (run: python -m scripts.paper.numbers).
 
-Values that cannot be recomputed locally (they need the NVIDIA classifier or a live probe server, or a
-log that was not kept) are pinned from results/decisions.md and marked `decisions.md` beside the macro.
+Text-policy rows (holdout, final) are recomputed from the saved post-regrade policy: holdout from
+results/features_text_holdout.npy, final by running the classifier on CPU (cached to features_text_final.npy).
+Their seconds are modeled seconds plus the measured live MPS controller overhead (results/live_gate.json).
+Only the probe row (needs a live probe server) and a few other values are pinned from results/decisions.md
+and marked `decisions.md` beside the macro.
 """
 import json
 import subprocess
@@ -12,7 +15,7 @@ import numpy as np
 from dory.bench import load_speed
 from dory.evalsets import MAX_TOKENS
 from dory.evaluate import _correct, fixed, oracle, paired_bootstrap, policy_metrics, random_matched
-from dory.sweep import read_rows
+from dory.sweep import latest_rows, read_rows
 
 ROOT = Path(__file__).resolve().parents[2]
 R = ROOT / "results"
@@ -32,6 +35,36 @@ def _pre_labels(split):
     out = subprocess.run(["git", "show", f"{PRE_REGRADE_COMMIT}:results/labels_{split}.jsonl"], cwd=ROOT,
                          capture_output=True, text=True, check=True).stdout
     return [json.loads(l) for l in out.splitlines() if l.strip()]
+
+
+def _feat(name):
+    """Cached feature file: worktree results/, else the main checkout's (gitignored, not in worktrees)."""
+    for d in (R, ROOT.parents[1] / "results"):
+        if (d / name).exists():
+            return d / name
+    return R / name
+
+
+def _text_row(split, L, speed, overhead_s):
+    """Post-regrade text policy on `split`: choice by saved joblib (as scripts/final_test.py), tau unchanged.
+    Seconds: modeled + measured live MPS overhead (CPU classifier timing is not comparable)."""
+    from dory.policy import choose_k, load_policy, proba_for_ks
+    f = _feat(f"features_text_{split}.npy")
+    if f.exists() and len(X := np.load(f)) == len(L):
+        pass
+    else:
+        from dory.features import text_features
+        X = text_features([r["prompt"] for r in L], device="cpu")[0]
+        np.save(R / f"features_text_{split}.npy", X)
+    pol = load_policy(_feat("policy_text.joblib"))
+    ks = choose_k(proba_for_ks(pol["model"], X), X[:, -1].astype(bool), pol["tau"])  # last column = is_code
+    return {r["id"]: int(k) for r, k in zip(L, ks)}, {r["id"]: overhead_s for r in L}
+
+
+def _latest(path):
+    """Rows of a cfg/id result file with latest_rows semantics (error rows skipped, latest retry wins)."""
+    rows = [{**r, "k": r["cfg"], "variant": None} for r in read_rows(path)]
+    return list(latest_rows(rows).values())
 
 
 def _floor(L):
@@ -54,12 +87,12 @@ def _policies(L):
             "Fixed k=1 + code floor": _floor(L), "Per-prompt oracle": oracle(L)}
 
 
-def _rows(L, pols, speed):
+def _rows(L, pols, speed, extra=None):
     """name -> metrics incl. delta vs fixed2 with paired-bootstrap CI."""
     base = [_correct(r, 2) for r in L]
     out = {}
     for name, ch in pols.items():
-        m = policy_metrics(L, ch, speed)
+        m = policy_metrics(L, ch, speed, (extra or {}).get(name))
         m["d"], m["lo"], m["hi"] = paired_bootstrap([_correct(r, ch[r["id"]]) for r in L], base)
         out[name] = m
     return out
@@ -117,6 +150,17 @@ def compute():
             p = S + names[name]
             put(p + "Acc", m["acc"]); put(p + "MeanK", m["mean_k"], 2); put(p + "Sec", m["mean_seconds"], 2)
             put(p + "Delta", m["d"]); put(p + "Lo", m["lo"]); put(p + "Hi", m["hi"])
+    gate = json.loads((R / "live_gate.json").read_text())
+    ov = gate["overhead_ms_text_policy"] / 1000
+    # text policy: acc/k/CI from the saved post-regrade joblib; seconds = modeled + measured live MPS overhead
+    for split in ("holdout", "final"):
+        L, S = sp[split], split.capitalize()
+        ch, ex = _text_row(split, L, speed, ov)
+        pols = {**_policies(L), "Text policy": ch}
+        m = _rows(L, pols, speed, {"Text policy": ex})["Text policy"]
+        rows[split]["Text policy"] = m
+        put(S + "TextAcc", m["acc"]); put(S + "TextMeanK", m["mean_k"], 2); put(S + "TextSec", m["mean_seconds"], 2)
+        put(S + "TextDelta", m["d"]); put(S + "TextLo", m["lo"]); put(S + "TextHi", m["hi"])
     rm = random_matched(sp["holdout"], 2.0)
     put("HoldoutRandomAcc", policy_metrics(sp["holdout"], rm, speed)["acc"])
     f2, f1 = rows["final"]["Fixed k=2"], rows["final"]["Fixed k=1 + code floor"]
@@ -134,15 +178,13 @@ def compute():
 
     # --- learned controllers: pinned from decisions.md (need classifier / live probe server) ---
     # decisions.md "Task 8 (rerun after regrade)" and "Probe holdout report (rerun after regrade)"
-    pinned = {"HoldoutTextAcc": "0.583", "HoldoutTextDelta": "-0.003", "HoldoutTextLo": "-0.020",
-              "HoldoutTextHi": "+0.013", "HoldoutTextSec": "18.77",
-              "HoldoutProbeAcc": "0.590", "HoldoutProbeDelta": "+0.003", "HoldoutProbeLo": "-0.023",
+    pinned = {"HoldoutProbeAcc": "0.590", "HoldoutProbeDelta": "+0.003", "HoldoutProbeLo": "-0.023",
               "HoldoutProbeHi": "+0.033", "HoldoutProbeSec": "18.13",
-              # pre-regrade Task 8 text: +0.007 [-0.010, +0.027], probe +0.003 [-0.023, +0.030]
+              # pre-regrade Task 8 text: +0.007 [-0.010, +0.027]
               "HoldoutTextPreDelta": "+0.007", "HoldoutTextPreLo": "-0.010", "HoldoutTextPreHi": "+0.027",
-              # decisions.md "Follow-ups": text on final after regrade; Task 10 table: mean_k 1.94, 20.43 s, CI [-0.02, +0.04]
-              "FinalTextAcc": "0.630", "FinalTextMeanK": "1.94", "FinalTextSec": "20.43",
-              "FinalTextDelta": "+0.010", "FinalTextLo": "-0.020", "FinalTextHi": "+0.040"}
+              # decisions.md Task 10 table (pre-regrade text on final, tau 0.4326)
+              "FinalPreTextAcc": "0.630", "FinalPreTextMeanK": "1.94", "FinalPreTextSec": "20.43",
+              "FinalPreTextDelta": "+0.010", "FinalPreTextLo": "-0.020", "FinalPreTextHi": "+0.040"}
     V.update(pinned)
     # Both splits were graded twice (Ruling AJ: grader made truncation-aware). Pre-regrade labels are the
     # Phase 1 commit; they are recomputed from git, not typed in.
@@ -150,8 +192,6 @@ def compute():
         L, S = _pre_labels(split), split.capitalize() + "Pre"
         for name, m in _rows(L, _policies(L), speed).items():
             put(S + names[name] + "Acc", m["acc"]); put(S + names[name] + "Sec", m["mean_seconds"], 2)
-    # decisions.md "Follow-ups": pre-regrade text policy on final (the run is not reproducible without the classifier)
-    V["FinalPreTextAcc"] = "0.630"
     V["FinalPreChosenAcc"] = V["FinalPreFixedTwoAcc"]
 
     # --- truncation confound (new analysis) ---
@@ -163,9 +203,8 @@ def compute():
             put(p + "TruncN", t["n_trunc"], 0)
 
     # --- systems ---
-    ab = read_rows(R / "spec_ab.jsonl")
     by = {}
-    for r in ab:
+    for r in _latest(R / "spec_ab.jsonl"):
         by.setdefault(r["cfg"], {})[r["id"]] = r
     sysrows = {}
     for cfg, S in (("n4", "Four"), ("n6", "Six")):
@@ -185,13 +224,13 @@ def compute():
     put("SpecSequentialRatio", k4["speedup"], 2)  # sequential-arm artifact (C6)
     put("SpecSequentialAccept", k4["acceptance"], 2)
     off = {}
-    for r in read_rows(R / "offload_ab.jsonl"):
+    for r in _latest(R / "offload_ab.jsonl"):
         off.setdefault(r["cfg"], {})[r["id"]] = r["gen_tps"]
     ratio = [off["plain_ngl54"][i] / off["plain"][i] for i in off["plain"]]
     put("OffloadSpeedup", _gm(ratio), 2)
     # decisions.md Task 3: llama-server n-gram lookup, 10 MBPP prompts, 16.33 vs 12.08 tok/s (no results file)
     put("NgramSpeedup", 12.08 / 16.33, 2)
-    q8 = {r["id"]: r["correct"] for r in read_rows(R / "sweep_holdout_q8.jsonl")}
+    q8 = {i: r["correct"] for (i, _, _), r in latest_rows(read_rows(R / "sweep_holdout_q8.jsonl")).items()}
     f16 = {r["id"]: _correct(r, 4) for r in sp["holdout"] if r["source"] != "mbpp"}
     # q8 file covers gsm8k+mmlu_pro (200 items); regraded labels give the f16 side
     put("QEightN", len(q8), 0)
@@ -202,7 +241,6 @@ def compute():
     put("MpsMs", ane["latency"]["pytorch_mps"]["median_ms"], 1)
     put("CpuMs", ane["latency"]["pytorch_cpu"]["median_ms"], 1)
     put("AneSpeedup", ane["latency"]["pytorch_mps"]["median_ms"] / ane["coreml"]["CPU_AND_NE"]["latency"]["median_ms"], 1)
-    gate = json.loads((R / "live_gate.json").read_text())
     put("LiveOverheadMs", gate["overhead_ms_live_none"], 1)
     put("LiveGateN", gate["n"], 0)
 
@@ -218,16 +256,12 @@ def write(out_dir: Path):
     (out_dir / "numbers.json").write_text(json.dumps(V, indent=1, sort_keys=True) + "\n")
     (out_dir / "numbers.tex").write_text("% generated by scripts/paper/numbers.py; do not edit\n" + "".join(
         f"\\newcommand{{\\{k}}}{{{v}}}\n" for k, v in sorted(V.items())))
-    # holdout table: learned rows come from decisions.md (pinned)
+    # probe row needs a live probe server: pinned from decisions.md
     t = lambda v: float(V[v])
-    learned = [("Text policy (matched $k{=}2$)", {"acc": t("HoldoutTextAcc"), "mean_k": 2.0,
-               "mean_seconds": t("HoldoutTextSec"), "d": t("HoldoutTextDelta"), "lo": t("HoldoutTextLo"), "hi": t("HoldoutTextHi")}),
-              ("Hidden-state probe (matched $k{=}2$)", {"acc": t("HoldoutProbeAcc"), "mean_k": 2.0,
-               "mean_seconds": t("HoldoutProbeSec"), "d": t("HoldoutProbeDelta"), "lo": t("HoldoutProbeLo"), "hi": t("HoldoutProbeHi")})]
-    (out_dir / "tab_controllers_holdout.tex").write_text(_table(rows["holdout"], learned))
-    text = ("Text policy (failed gate)", {"acc": t("FinalTextAcc"), "mean_k": t("FinalTextMeanK"),
-            "mean_seconds": t("FinalTextSec"), "d": t("FinalTextDelta"), "lo": t("FinalTextLo"), "hi": t("FinalTextHi")})
-    (out_dir / "tab_controllers_final.tex").write_text(_table(rows["final"], [text]))
+    probe = [("Hidden-state probe (matched $k{=}2$)", {"acc": t("HoldoutProbeAcc"), "mean_k": 2.0,
+             "mean_seconds": t("HoldoutProbeSec"), "d": t("HoldoutProbeDelta"), "lo": t("HoldoutProbeLo"), "hi": t("HoldoutProbeHi")})]
+    (out_dir / "tab_controllers_holdout.tex").write_text(_table(rows["holdout"], probe))
+    (out_dir / "tab_controllers_final.tex").write_text(_table(rows["final"]))
 
     # per source: acc / mean s on holdout for each policy
     pols, L = _policies(sp["holdout"]), sp["holdout"]
