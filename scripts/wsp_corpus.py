@@ -243,7 +243,7 @@ def cv_auc(X, y, groups=None, seed=0, n_null=5):
     from sklearn.pipeline import Pipeline
     from sklearn.preprocessing import StandardScaler
     X, y = np.asarray(X), np.asarray(y).astype(int)
-    if np.bincount(y, minlength=2).min() < 5:
+    if np.bincount(y, minlength=2).min() < 5 or (groups is not None and len(set(groups)) < 5):
         return None
     cv = StratifiedKFold(5, shuffle=True, random_state=seed) if groups is None else GroupKFold(5)
 
