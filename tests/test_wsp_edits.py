@@ -64,3 +64,28 @@ def test_untouched_tensor_identical(base, tmp_path):
     apply_edit({"id": "x", "ops": [{"tensor": "a", "op": "set", "index": [[0, 0]], "value": [9.0]}]}, base, out)
     orig, new = load_file(str(base / "model.safetensors")), load_file(str(out / "model.safetensors"))
     assert torch.equal(_bytes(orig["b"]), _bytes(new["b"]))
+
+
+def test_control_size_matched_on_nonuniform_base(tmp_path):
+    d = tmp_path / "nb"
+    d.mkdir()
+    g = torch.Generator().manual_seed(0)
+    w = (10 ** (torch.rand(64, 64, generator=g) * 5 - 3)).to(torch.bfloat16)  # 1e-3 .. 1e2
+    save_file({"a": w}, str(d / "model.safetensors"))
+    idx = [[i, (3 * i) % 64] for i in range(40)]
+    e = {"id": "nb", "ops": [{"tensor": "a", "op": "scale", "index": idx, "value": 1.2}]}
+    se = apply_edit(e, d, tmp_path / "e")
+    c = random_control(e, d, seed=3)
+    sc = apply_edit(c, d, tmp_path / "c")
+    assert sc.n_changed == se.n_changed == c["realized"]["n_changed"]
+    assert abs(sc.delta_l2["a"] / se.delta_l2["a"] - 1) < 0.25
+
+
+def test_dtype_and_scale_rows_errors(tmp_path):
+    d = tmp_path / "f"
+    d.mkdir()
+    save_file({"f": torch.ones(4), "v": torch.ones(4, dtype=torch.bfloat16)}, str(d / "model.safetensors"))
+    with pytest.raises(TypeError):
+        apply_edit({"id": "x", "ops": [{"tensor": "f", "op": "set", "index": [[0]], "value": [1.0]}]}, d, tmp_path / "o1")
+    with pytest.raises(ValueError):
+        apply_edit({"id": "x", "ops": [{"tensor": "v", "op": "scale_rows", "index": [0], "value": 2.0}]}, d, tmp_path / "o2")
