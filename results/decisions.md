@@ -163,3 +163,12 @@ oracle | 0.667 | 1.12 | 11.26 | +0.080 [+0.050, +0.113]
 text | 0.583 | 2.00 | 18.77 | -0.003 [-0.020, +0.013]
 probe | 0.590 | 2.00 | 18.13 | +0.003 [-0.023, +0.033]
 probe+text | 0.590 | 2.00 | 18.18 | +0.003 [-0.023, +0.033]
+
+## Neural Engine (Core ML) classifier check
+
+`scripts/ane_bench.py`, `results/ane_bench.json`: NVIDIA classifier converted to Core ML (fp16 mlprogram, static buckets L=128/512; 59/60 holdout prompts fit 128), batch 1, tokenization included.
+
+- Core ML CPU_AND_NE: median 17.9 ms (p90 18.2) vs PyTorch MPS 44.3 ms and CPU 44.8 ms: 2.5x faster. Parity vs PyTorch fp32 on 60 prompts: argmax identical on all 8 heads, max logit diff 0.024, router feature max diff 0.0038, is_code 100% agreement. MLComputePlan: 454/516 ops on the Neural Engine (L=128), 478/516 (L=512).
+- CPU_AND_GPU, CPU_ONLY and ALL produce NaN logits (fp16 overflow off the ANE path): unusable as converted.
+- Cost: ~2.1 GB RSS (vs ~0.9 GB PyTorch) and ~16 s first load. Conversion needs two DeBERTa monkeypatches (in the script only). coremltools segfaults freeing Core ML objects; the bench isolates each arm in a subprocess ending with `os._exit(0)`.
+- Not wired into the router: the deployed None policy needs the classifier only for is_code; ANE would cut that 44 ms to ~18 ms (about 0.1% of a ~20 s request) at +1.2 GB RAM.
