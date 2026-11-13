@@ -1,6 +1,6 @@
 # Protocol rulings record
 
-Every ruling made during the study and the paper work, with its rationale and the cost if wrong. Rulings A-AG are copied verbatim from the controller's ledger (a line cut off at a quote character in the source ends with a marker). AH-AO are the follow-up rulings. P1-P8 are the paper-process rulings. Gate results are in `results/decisions.md`.
+Every ruling made during the study and the paper work, with its rationale and the cost if wrong. Rulings A-AG are copied verbatim from the controller's ledger . AH-AO are the follow-up rulings. P1-P8 are the paper-process rulings. Gate results are in `results/decisions.md`.
 
 ## Rulings A-AG
 
@@ -22,11 +22,11 @@ Ruling H: merge t2/t4/t7 into impl only after T1b finishes — T1b is committing
 
 Ruling I: promote 2 minors to fix-required — stderr handle leak (server.py:121,156-163) and orphan child on interrupted startup (server.py:128-136) — sweeps restart servers and get interrupted; orphan pins ~4 GB GPU — cost if wrong: one cheap fix round. Fix round 1 dispatched to original implementer.
 
-Ruling J: override brief literal grading wording (fence variants, mmlu prose-letter fallback, mmlu missing boundary, gsm8k prefer [truncated in the source record]
+Ruling J: override brief literal grading wording (fence variants, mmlu prose-letter fallback, mmlu missing boundary, gsm8k prefer "answer is N") — spec intent is uncorrupted labels; brief wording was a plan defect — cost if wrong: graders slightly stricter than brief text, revisit if false negatives show in Phase 0.
 
 Ruling K: split T8 into 8a (Steps 1-4 code, now) and 8b (Steps 5-7 train+gate, after T6 labels); classifier weights not downloaded until 8b (disk 9 GB free) — cost if wrong: features untested on real model until 8b.
 
-Ruling L: promote re-review minor [truncated in the source record]
+Ruling L: promote re-review minor "markdown mmlu answers (**Answer: C**, answer is **C**) graded False" to fix — chat models bold answers; label corruption — cost if wrong: one cheap round.
 
 Ruling M: apply re-reviewer tightening of answer prefix as round 3 — one-token change, removes a real false positive — cost if wrong: trivial.
 
@@ -34,11 +34,11 @@ Ruling N: T5 split 5a (code+tests, worktree t5 now) / 5b (Phase 0 quality run + 
 
 Ruling O: fix real-classifier ValueError now as Task 8 fix (worktree t8fix) instead of waiting for 8b — load-bearing for 8b/9b/10 — cost if wrong: none
 
-Ruling P: retry transient errors; error rows count as done only if [truncated in the source record]
+Ruling P: retry transient errors; error rows count as done only if "grade:" or "HTTP 4"; latest_rows() last-clean-wins for downstream (T6 must use it) — cost if wrong: duplicate rows, handled by latest_rows.
 
 Ruling Q: T3 4-server memory gate measured as system memory delta (vm_stat/memory_pressure) + swap growth <=1 GB, not summed RSS (mmap pages shared) — cost if wrong: gate too lenient if Metal buffers not shared; swap check guards it.
 
-Ruling R: keep raw text without [truncated in the source record]
+Ruling R: keep raw text without "Prompt: " prefix — card code example (README:319) prepends it but the features feed our own logistic regression trained and served on the same featurization, so a consistent shift is learned away — cost if wrong: slightly noisier complexity features.
 
 Ruling S: T6 split 6a (code, now on t6 from int) / 6b (sweeps+gate after T5b); T10 split 10a (code, now on t10 from int) / 10b (live gate + final test). Task 11 SKIPPED (no draft kv override) — Router drops spec_k4 — cost if wrong: none (gate failed in T1 spike).
 
@@ -54,7 +54,7 @@ Ruling X: controller did 5b gate analysis inline instead of a Sonnet dispatch �
 
 Ruling Y: tie counts as pass (gate is >=) — continue; flagged that the fixed-k curve is flat so router gains will come only from per-item disagreement (oracle +8 pts) — cost if wrong: Tasks 8-10 may show no gain, which is itself a valid result.
 
-Ruling Z: continue instead of stopping — fit already uses class_weight= [truncated in the source record]
+Ruling Z: continue past the failed balance gate (plan says stop+report) — class_weight="balanced" already in fit, remaining phases cost minutes, Task 8 gate measures real benefit; the user's standing instruction is to keep going — cost if wrong: ~1h compute on a router that may show no gain (itself a reportable result).
 
 Ruling AA: controller fixed object-dtype label bug inline (policy.py:83, probe.py:72 .astype(int); test now includes None labels, red then green) — 2-line fix, review would cost more than the fix — cost if wrong: final review catches it. Commit $(git rev-parse --short HEAD)
 
@@ -62,7 +62,7 @@ Ruling AB: keep plan's None fallback (fixed2) as the chosen policy even though f
 
 Ruling AC: controller ran 10b gate/final inline via two small scripts (scripts/live_gate.py, scripts/final_test.py) instead of a Sonnet dispatch — run-and-record work, GPU already free — cost if wrong: final review covers them.
 
-Ruling AD: Router._decide now holds a threading.Lock around text_features — live gate with 4 threads hit Metal assertion [truncated in the source record]
+Ruling AD: Router._decide now holds a threading.Lock around text_features — live gate with 4 threads hit Metal assertion "Scheduled handler provided after commit call" (MPS classifier not thread-safe) — cost if wrong: decisions serialized (~ms each), negligible.
 
 Ruling AE: not fixing, since the text policy is not deployed and 44-60 ms is about 0.3% of a ~20 s request.
 

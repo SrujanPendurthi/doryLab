@@ -246,6 +246,12 @@ def compute():
     from scipy.stats import binomtest
     b = sum(f16[i] and not q8[i] for i in q8); c = sum(q8[i] and not f16[i] for i in q8)
     put("QEightMcNemarP", binomtest(min(b, c), b + c, 0.5).pvalue, 2)
+    srcof = {r["id"]: r["source"] for r in sp["holdout"]}
+    for sname, S in (("gsm8k", "Gsm"), ("mmlu_pro", "Mmlu")):
+        ids = [i for i in q8 if srcof[i] == sname]
+        put(f"QEight{S}Sixteen", sum(f16[i] for i in ids), 0); put(f"QEight{S}Eight", sum(q8[i] for i in ids), 0)
+        put(f"QEight{S}LostByEight", sum(f16[i] and not q8[i] for i in ids), 0)
+        put(f"QEight{S}GainedByEight", sum(q8[i] and not f16[i] for i in ids), 0)
     put("QEightAcc", np.mean(list(q8.values()))); put("QSixteenAcc", np.mean([f16[i] for i in q8]))
     ane = json.loads((R / "ane_bench.json").read_text())
     put("AneMs", ane["coreml"]["CPU_AND_NE"]["latency"]["median_ms"], 1)
