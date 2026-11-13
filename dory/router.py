@@ -17,7 +17,7 @@ LOOKUP_ARGS: list[str] = []  # filled from Task 3 results once n-gram lookup sup
 
 class Router:
     def __init__(self, policy_path: Path | None, gguf: Path, kv_type: str, slots: int = 4,
-                 lookup_for_code: bool = False):
+                 lookup_for_code: bool = False, spec_draft: Path | None = None):
         if lookup_for_code and not LOOKUP_ARGS:
             raise NotImplementedError("lookup_for_code needs LOOKUP_ARGS from Task 3")
         self.policy = load_policy(policy_path) if policy_path else None
@@ -29,7 +29,8 @@ class Router:
         self._lock = threading.Lock()  # MPS classifier is not thread-safe; serialize decisions
         try:
             for k in self.ks:
-                self.servers[k] = self._start(server_args(gguf, k, free_port(), slots=slots, kv_type=kv_type))
+                draft = spec_draft if k == 4 else None  # self-speculative k=4 (Task 11); gguf must be stock (num_loops=4)
+                self.servers[k] = self._start(server_args(gguf, k, free_port(), slots=slots, kv_type=kv_type, draft=draft))
             if self.feature_set != "text":
                 port = free_port()
                 self._start(server_args(gguf, 1, port, slots=1, ctx_per_slot=8192, embeddings=True), port)
@@ -88,9 +89,12 @@ def main():
     ap.add_argument("--policy", type=Path, default=None)
     ap.add_argument("--gguf", type=Path, default=Path("models/dory-q5.gguf"))
     ap.add_argument("--kv", default="f16")
+    ap.add_argument("--spec-draft", type=Path, default=Path("models/gguf/dory-q5-loops1-draft.gguf"),
+                    help="k=1 draft for k=4 (scripts/make_draft.sh); --no-spec disables")
+    ap.add_argument("--no-spec", action="store_true")
     ap.add_argument("prompt")
     a = ap.parse_args()
-    with Router(a.policy, a.gguf, a.kv) as r:
+    with Router(a.policy, a.gguf, a.kv, spec_draft=None if a.no_spec else a.spec_draft) as r:
         k, secs = r.decide(a.prompt)
         c, _ = r.generate(a.prompt)
         print(f"k={k} controller={secs * 1000:.1f} ms gen={c.gen_tps:.1f} tok/s\n{c.text}")

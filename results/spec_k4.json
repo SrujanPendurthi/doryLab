@@ -1,0 +1,13 @@
+{
+ "n": 100,
+ "acceptance": 0.8395056336797974,
+ "draft_n": 22898,
+ "spec_gen_tps": 2.4224694574866965,
+ "plain_gen_tps_measured": 7.603699361403102,
+ "speed_json_k4_gen_tps": 8.341030615948563,
+ "identical": 20,
+ "n_identity": 20,
+ "mismatch_ids": [],
+ "speedup": 0.29042807406254884,
+ "gate": false
+}

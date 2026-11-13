@@ -94,3 +94,13 @@ def test_no_policy_skips_classifier(monkeypatch):
     assert r.decide("hi")[0] == 2 and not n
     assert r.generate("hi", 100) == (100, 2) and not n
     assert r.generate("hi") == (512, 2) and len(n) == 1
+
+
+def test_spec_draft_only_on_k4(monkeypatch):
+    seen = []
+    monkeypatch.setattr(R, "Server", lambda args, port: (seen.append(args), FakeServer())[1])
+    monkeypatch.setattr(R, "load_policy", lambda p: {"feature_set": "text", "model": FavourK1(), "tau": 0.5})
+    R.Router(Path("p.joblib"), Path("m.gguf"), "f16", spec_draft=Path("d.gguf"))
+    with_draft = [a for a in seen if "-md" in a]
+    assert len(with_draft) == 1 and "--override-kv" not in with_draft[0]  # k=4 only; loops from GGUF metadata
+    assert len(seen) == 3
