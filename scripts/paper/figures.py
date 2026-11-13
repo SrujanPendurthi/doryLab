@@ -38,7 +38,7 @@ def _isnum(v):
 
 
 def fig_pareto(out, V):
-    fig, axes = plt.subplots(1, 2, figsize=(6.5, 3.2))
+    fig, axes = plt.subplots(1, 2, figsize=(6.5, 3.2), sharey=True)
     handles = {}
     for ax, S, title in zip(axes, ("Holdout", "Final"), ("Holdout (n=300)", "Final test (n=100)")):
         g = lambda n, f: V[f"{S}{n}{f}"]
@@ -74,7 +74,7 @@ def fig_headroom(out):
             left = 0
             for (c, _), f in zip(cols, fr):
                 ax.barh(i, f, left=left, color=c, height=0.6, edgecolor="white", linewidth=1.5)
-                if f >= 0.10:
+                if f >= 0.13:
                     ax.text(left + f / 2, i, f"{f:.0%}", ha="center", va="center", fontsize=7.5,
                             color="white" if c == BLUE else INK)
                 left += f
@@ -85,10 +85,10 @@ def fig_headroom(out):
         ax.set_xlabel("share of prompts")
         ax.set_title(title, fontsize=9)
         ax.grid(axis="y", visible=False)
-    axes[0].legend(handles=[plt.Rectangle((0, 0), 1, 1, color=c) for c, _ in cols], labels=[l for _, l in cols],
-                   loc="lower center", bbox_to_anchor=(1.1, -0.45), ncol=3, fontsize=8)
-    fig.tight_layout()
-    fig.savefig(out / "fig_headroom.pdf", bbox_inches="tight")
+    fig.legend([plt.Rectangle((0, 0), 1, 1, color=c) for c, _ in cols], [l for _, l in cols],
+               loc="lower center", ncol=3, fontsize=8)
+    fig.tight_layout(rect=(0, 0.09, 1, 1))
+    fig.savefig(out / "fig_headroom.pdf")
 
 
 def fig_truncation(out, V):
