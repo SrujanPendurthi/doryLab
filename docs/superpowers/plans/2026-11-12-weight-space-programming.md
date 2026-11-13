@@ -4,9 +4,9 @@
 
 **Goal:** Opus writes direct, verified weight edits that raise Dory1.0-4B's k=1 accuracy under the token caps (or cut its tokens at equal accuracy), proven on a sealed test set.
 
-**Architecture:** BF16 safetensors are the editable source of truth. An edit is a JSON patch applied to them, converted to a Q8_0 GGUF and scored with the existing sweep/grade harness. A parity-tested PyTorch reimplementation of Dory gives activations for a logit lens, probes and ablations; their outputs form a research corpus from which the controller (Opus) authors edits. Each edit runs through screen, selection, a size-matched random control and an ARC damage check.
+**Architecture:** BF16 safetensors are the editable source of truth. An edit is a JSON patch applied to them, converted to a Q8_0 GGUF and scored with the existing sweep/grade harness. Dory in PyTorch via the open transformers PR #50099 (parity-tested against llama-server) gives activations for a logit lens, probes and ablations; their outputs form a research corpus from which the controller (Opus) authors edits. Each edit runs through screen, selection, a size-matched random control and an ARC damage check.
 
-**Tech Stack:** Python 3.13 `.venv`, torch 2.8 (MPS, bf16), safetensors, numpy, scikit-learn, the vendored llama.cpp (llama-server, `convert_hf_to_gguf.py`, llama-quantize), the existing `dory/` package.
+**Tech Stack:** Python 3.13 (`.venv-wsp`: system site packages + transformers pinned to PR #50099), torch 2.8 (MPS, bf16), safetensors, numpy, scikit-learn, the vendored llama.cpp (llama-server, `convert_hf_to_gguf.py`, llama-quantize), the existing `dory/` package.
 
 **Spec:** `docs/superpowers/specs/2026-11-12-weight-space-programming-design.md`
 
@@ -121,28 +121,33 @@
 - [ ] **Step 4:** Run the tests. Expected: PASS.
 - [ ] **Step 5:** Commit.
 
-### Task 5: PyTorch Dory with parity to llama-server
+### Task 5: PyTorch Dory from the transformers PR, with parity to llama-server
+
+No released transformers has Dory (checked through 5.22.2). Open PR huggingface/transformers#50099 ("Add Dory model support", `modeling_dory.py`, references NVIDIA's merged vLLM port) provides it. We pin its head commit in a separate venv so the loop-controller's `.venv` is untouched, and wrap it; we do not reimplement the model.
 
 **Files:**
-- Create: `dory/wsp/model.py`
+- Create: `scripts/wsp_setup_venv.sh`, `dory/wsp/model.py`
 - Test: `tests/test_wsp_model.py` (parity tests skip when `models/bf16` is absent)
 
 **Interfaces:**
-- Consumes: `models/bf16`, `models/gguf/dory-base-bf16.gguf`, `vendor/llama.cpp/src/models/dory.cpp` (the reference semantics: layer pattern, per-layer RoPE profile and two thetas, sliding window 1024, nGPT-style alpha, attention output gate, input/recurrent/output blocks, recurrent block repeated `loops` times).
+- Consumes: `models/bf16`, `models/gguf/dory-base-bf16.gguf`.
 - Produces:
-  - `DoryTorch.load(model_dir: Path, device: str = "mps", dtype=torch.bfloat16) -> DoryTorch`, and `DoryTorch.from_config(cfg: dict, seed: int = 0, device: str = "cpu") -> DoryTorch` with random weights (for unit tests).
-  - `DoryTorch.forward(ids: torch.LongTensor [1, T], loops: int, capture: set[str] | None = None) -> tuple[torch.Tensor, dict[str, torch.Tensor]]`: logits `[T, V]` (float32) and captured activations. Capture keys: `resid.{v}` (residual after virtual layer v, 0-based over `16 + 40*loops + 16`), `mlp_act.{v}` (MLP hidden after activation), `attn_out.{v}` (attention output before the residual add, per head as `[T, H, D]`).
+  - `.venv-wsp`: `python3 -m venv --system-site-packages .venv-wsp`, then `pip install "git+https://github.com/huggingface/transformers.git@fcc6924dfbac964f00787859b568c867ef5ad4cb"`. All `dory/wsp` code and `scripts/wsp_*` run under `.venv-wsp`.
+  - `DoryTorch.load(model_dir: Path, device: str = "mps", dtype=torch.bfloat16) -> DoryTorch` (wraps `AutoModelForCausalLM.from_pretrained`), and `DoryTorch.from_config(cfg: dict, seed: int = 0, device: str = "cpu") -> DoryTorch` with random weights (for unit tests).
+  - `DoryTorch.forward(ids: torch.LongTensor [1, T], loops: int, capture: set[str] | None = None) -> tuple[torch.Tensor, dict[str, torch.Tensor]]`: logits `[T, V]` (float32) and captured activations via forward hooks. Hooks on shared recurrent layers fire once per loop; captures are indexed by call order into virtual layers. Capture keys: `resid.{v}` (residual after virtual layer v, 0-based over `16 + 40*loops + 16`), `mlp_act.{v}` (MLP hidden after activation), `attn_out.{v}` (attention output before the residual add, per head as `[T, H, D]`). How the loop count is set per call is read from `modeling_dory.py` (config field or forward kwarg) and recorded in the module docstring.
   - `virtual_to_physical(v: int, loops: int) -> tuple[int, int]` returning (physical layer, loop index; -1 outside the recurrent block).
   - `template_ids(server_url: str, prompt: str) -> list[int]` using llama-server `/apply-template` then `/tokenize`, so PyTorch and the server see identical tokens.
 
-- [ ] **Step 1: Write failing tests:**
+- [ ] **Step 1:** Write and run `scripts/wsp_setup_venv.sh`; verify `from transformers import AutoModelForCausalLM; AutoModelForCausalLM.from_pretrained("models/bf16")` loads under `.venv-wsp`.
+- [ ] **Step 2: Write failing tests:**
   - `test_virtual_to_physical`: loops=2: v=0 → (0, -1); v=16 → (16, 0); v=56 → (16, 1); v=96 → (56, -1).
+  - `test_capture_counts` (tiny `from_config`, 2+2+2 layers, loops=3): exactly `2 + 2*3 + 2` `resid.*` keys.
   - `test_parity_next_token` (integration): on the first 20 `train` prompts, top-1 next token after the templated prompt matches the BF16 GGUF server's `/completion` (`n_predict: 1`, `n_probs: 5`) on 20/20 at each k in {1, 2, 4}, and top-5 logprob max abs diff < 0.1.
   - `test_parity_greedy_32` (integration): 32-token greedy continuations identical on ≥ 18/20 at k=1.
-- [ ] **Step 2:** Run. Expected: FAIL.
-- [ ] **Step 3:** Implement from `dory.cpp`. When a semantic is unclear, read the C++ and record the decision in a module docstring line; do not guess from other architectures.
-- [ ] **Step 4:** Run the tests. Expected: PASS. If parity fails, stop and report the first virtual layer whose output diverges (compare with llama.cpp's `GGML_SCHED` tensor dump via `llama-eval-callback` if needed). No later task starts until this passes.
-- [ ] **Step 5:** Commit.
+- [ ] **Step 3:** Run. Expected: FAIL.
+- [ ] **Step 4:** Implement the wrapper.
+- [ ] **Step 5:** Run the tests. Expected: PASS. The PR port and the llama.cpp port are independent and both unofficial, so agreement validates both. If parity fails, stop and report the first virtual layer whose output diverges (compare per-layer hidden states against llama.cpp's `llama-eval-callback` dump). No later task starts until this passes.
+- [ ] **Step 6:** Commit.
 
 ### Task 6: Instruments: logit lens, probes, ablations, content swap
 

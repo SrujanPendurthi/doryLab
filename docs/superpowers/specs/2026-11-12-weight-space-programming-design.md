@@ -42,9 +42,9 @@ Stretch: k=1 reaches k=4 accuracy.
 ## Decisions (the controller's calls, made during design)
 
 - "Opus" = the controller session (Claude Opus 5.5) reading corpus files; no separate API pipeline.
-- No transformers/PyTorch Dory exists (config has no `auto_map`; transformers 5.14 has no `dory`).
-  We reimplement the forward pass in PyTorch from llama.cpp's `src/models/dory.cpp` and require parity
-  with llama-server before any probe result is trusted.
+- Open weights ship tensors only; no released transformers has Dory (checked through 5.22.2). Use the open
+  transformers PR #50099 (`modeling_dory.py`), pinned at fcc6924d in a separate `.venv-wsp`, and require
+  parity with llama-server before any probe result is trusted.
 - Weights: BF16 safetensors from `nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-BF16` (~8 GB) into the HF cache.
 - Evaluation format: Q8_0 GGUF made by the vendored converter (`vendor/llama.cpp/conversion/dory.py`).
   Base and every edit are evaluated in the same format; old Q5_K_M numbers are not reused as baselines.
