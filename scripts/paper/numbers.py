@@ -168,6 +168,11 @@ def compute():
     # chosen policy = fixed k=2 (its code floor is k=2 already): identical to Fixed k=2
     put("FinalChosenAcc", f2["acc"]); put("FinalChosenSec", f2["mean_seconds"], 2)
 
+    # widest paired-bootstrap half-width among non-degenerate policies (fixed 2 and the oracle excluded)
+    for split in ("holdout", "final"):
+        hw = max((m["hi"] - m["lo"]) / 2 for n, m in rows[split].items() if n not in ("Fixed k=2", "Per-prompt oracle"))
+        put(split.capitalize() + "CiHalf", hw)
+
     # oracle headroom: k=1 already right vs rescued by k=2/4, unrescuable
     for split in ("holdout", "final"):
         L, S = sp[split], split.capitalize()
@@ -243,6 +248,10 @@ def compute():
     put("AneSpeedup", ane["latency"]["pytorch_mps"]["median_ms"] / ane["coreml"]["CPU_AND_NE"]["latency"]["median_ms"], 1)
     put("LiveOverheadMs", gate["overhead_ms_live_none"], 1)
     put("LiveGateN", gate["n"], 0)
+    # KV memory: RSS of the k=4, slots=1 server, f16 vs q8_0 (results/bench.csv; decisions.md Task 3: 9.6 vs 8.0 GB)
+    import csv
+    rss = {r["kv"]: float(r["rss_mb"]) for r in csv.DictReader(open(R / "bench.csv")) if r["k"] == "4" and r["slots"] == "1"}
+    put("KvSavingGb", (rss["f16"] - rss["q8_0"]) / 1024, 1)
 
     compute.tables = (rows, T, sysrows, sp, speed)
     return V
