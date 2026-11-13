@@ -8,3 +8,4 @@ __pycache__/
 .DS_Store
 results/features_*.npy
 results/logs/
+.venv-wsp/

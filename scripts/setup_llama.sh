@@ -8,5 +8,5 @@ cd vendor/llama.cpp
 git cat-file -e "$LLAMA_REF" 2>/dev/null || git fetch --depth 1 origin pull/30306/head:dory
 git checkout "$LLAMA_REF"
 cmake -B build -DGGML_METAL=ON -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j 10 --target llama-server llama-cli llama-completion llama-lookup
+cmake --build build -j 10 --target llama-server llama-cli llama-completion llama-lookup llama-quantize
 build/bin/llama-server --version
