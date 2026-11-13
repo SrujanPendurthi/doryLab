@@ -10,6 +10,8 @@ Captures (float32, batch dim dropped):
   resid.{v}     residual stream after half-block v (attn: input of pre_feedforward_layernorm; mlp: layer output)
   attn_out.{v}  attention half only: o_proj input (gated, attn_sub_norm'd heads) as [T, H, D], before o_proj/residual
   mlp_act.{v}   mlp half only: act(gate)*up (input of ffn_sub_norm), [T, intermediate]
+The between-loop re-injection (`norm(h) + input_hidden_states`) is not captured, so the residual jumps between
+`resid.(16+40j-1)` and `resid.(16+40j)` for j>=1; lens and ablation code must account for this.
 """
 import json
 from pathlib import Path
@@ -48,6 +50,7 @@ class DoryTorch:
     @torch.no_grad()
     def forward(self, ids: torch.LongTensor, loops: int, capture: set[str] | None = None):
         m = self.model
+        prev_loops = m.config.n_recurrent_loops
         m.config.n_recurrent_loops = loops
         cap: dict[str, torch.Tensor] = {}
         want = capture or set()
@@ -79,6 +82,7 @@ class DoryTorch:
         try:
             logits = m(input_ids=ids.to(m.device), use_cache=False).logits[0].float()
         finally:
+            m.config.n_recurrent_loops = prev_loops
             for h in hooks:
                 h.remove()
         return logits, cap
