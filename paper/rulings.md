@@ -1,6 +1,6 @@
 # Protocol rulings record
 
-Every ruling made during the study and the paper work, with its rationale and the cost if wrong. Rulings A-AG are copied verbatim from the controller's ledger . AH-AO are the follow-up rulings. P1-P8 are the paper-process rulings. Gate results are in `results/decisions.md`.
+Every ruling made during the study and the paper work, with its rationale and the cost if wrong. Rulings A-AG are copied verbatim from the controller's ledger. AH-AO are the follow-up rulings. P1-P8 are the paper-process rulings. Gate results are in `results/decisions.md`.
 
 ## Rulings A-AG
 
