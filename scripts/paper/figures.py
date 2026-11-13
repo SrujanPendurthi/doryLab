@@ -1,6 +1,7 @@
 """Paper figures (vector PDF). Values come from paper/generated/numbers.json (scripts/paper/numbers.py) and results/.
 Run: python -m scripts.paper.figures. Palette: dataviz skill reference light slots, fixed order, shape + label as
-secondary encoding."""
+secondary encoding.
+Sequential-arm throughput is load-confounded (see C6), so only acceptance is shown from the sweep."""
 import json
 from pathlib import Path
 
@@ -116,7 +117,7 @@ def spec_data():
     R = ROOT / "results"
     sweep = {}
     for r in _latest(R / "draft_sweep.jsonl"):
-        sweep.setdefault(r["cfg"], []).append(r["gen_tps"])
+        sweep.setdefault(r["cfg"], []).append(r)
     by = {}
     for r in _latest(R / "spec_ab.jsonl"):
         by.setdefault(r["cfg"], {})[r["id"]] = r["gen_tps"]
@@ -127,18 +128,16 @@ def spec_data():
 def fig_spec(out, V):
     sweep, ratios = spec_data()
     fig, (a, b) = plt.subplots(1, 2, figsize=(6.5, 2.7), gridspec_kw={"width_ratios": [1.15, 1]})
-    cfgs = [c for c in ("plain", "n2", "n4", "n6", "n8") if c in sweep]
-    labels = ["plain" if c == "plain" else c[1:] for c in cfgs]
-    m = [np.mean(sweep[c]) for c in cfgs]
-    se = [np.std(sweep[c], ddof=1) / np.sqrt(len(sweep[c])) for c in cfgs]
-    a.bar(range(len(cfgs)), m, 0.6, color=[GRAY if c == "plain" else BLUE for c in cfgs])
-    a.errorbar(range(len(cfgs)), m, 1.96 * np.array(se), fmt="none", ecolor=INK2, lw=0.8, capsize=2)
-    for i, v in enumerate(m):
-        a.text(i, v * 0.5, f"{v:.1f}", ha="center", color="white" if cfgs[i] != "plain" else INK, fontsize=7.5)
-    a.set_xticks(range(len(cfgs)), labels)
+    cfgs = [c for c in ("n2", "n4", "n6", "n8", "n8_p07") if c in sweep]
+    acc = [sum(r["accepted"] for r in sweep[c]) / sum(r["draft_n"] for r in sweep[c]) for c in cfgs]
+    a.bar(range(len(cfgs)), acc, 0.6, color=BLUE)
+    for i, v in enumerate(acc):
+        a.text(i, v + 0.015, f"{v:.2f}", ha="center", fontsize=7.5, color=INK2)
+    a.set_xticks(range(len(cfgs)), [c[1:].replace("_p07", "\n(p07)") for c in cfgs])
+    a.set_ylim(0, 1.05)
     a.set_xlabel("max draft tokens $n_{max}$ (self-speculative)")
-    a.set_ylabel("generation speed (tok/s)")
-    a.set_title("Draft-length sweep (mean, 95% CI)", fontsize=9)
+    a.set_ylabel("draft acceptance rate")
+    a.set_title("Draft-length sweep: acceptance", fontsize=9)
     a.grid(axis="x", visible=False)
     rng = np.random.default_rng(0)
     for i, (c, col) in enumerate((("n4", BLUE), ("n6", ORANGE))):
