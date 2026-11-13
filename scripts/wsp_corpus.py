@@ -158,6 +158,10 @@ def char_to_token(pieces, offset: int) -> int:
 def target_position(source: str, pieces: list[str]):
     """Index in `pieces` (output tokens) of the first token of the final answer, or None. Whitespace-only tokens are skipped."""
     text = "".join(pieces)
+    if source == "mmlu_pro":
+        k = text.rfind(PHRASE[source])
+        m = k >= 0 and re.match(r"[:\s]*(?:\*\*)?\(?\s*(?:\*\*)?([A-J])\b", text[k + len(PHRASE[source]):])
+        return char_to_token(pieces, k + len(PHRASE[source]) + m.start(1)) if m else None
     if source == "mbpp":
         k = text.find("```python")
         e = None if k < 0 else k + len("```python")
@@ -169,12 +173,7 @@ def target_position(source: str, pieces: list[str]):
     start = 0
     for i, p in enumerate(pieces):
         if start >= e and p.strip():
-            if source != "mmlu_pro":
-                return i
-            if re.fullmatch(r"[A-J]", p.strip(" *()$\\{}")):
-                return i
-            if i > 0 and start - e > 12:
-                return None
+            return i
         start += len(p)
     return None
 
@@ -182,7 +181,7 @@ def target_position(source: str, pieces: list[str]):
 def pick_lens_rows(rows, tok, items, per_source):
     out, cnt = [], Counter()
     for r in rows:
-        if r.get("error") or cnt[r["source"]] >= per_source:
+        if r.get("error") or is_trunc(r) or cnt[r["source"]] >= per_source:
             continue
         ids = tok.encode(r["output"], add_special_tokens=False)
         t = target_position(r["source"], pieces_of(tok, ids))
@@ -192,12 +191,17 @@ def pick_lens_rows(rows, tok, items, per_source):
     return out
 
 
+def geom(model):
+    c = model.model.config
+    return c.n_input_layers, c.n_recurrent_layers, c.n_output_layers
+
+
 def lens_ranks(model, ids, n_prompt, t, loops):
     """Target-token rank (0 = top-1) at every virtual layer, for output token index t."""
     from dory.wsp.lens import logit_lens
     p = n_prompt + t  # absolute position of the target token; predicted from position p-1
-    lens = logit_lens(model, ids[:p], loops, topk=1, target_ids=ids[1:p + 1])
-    return lens["target_rank"][:, -1]
+    lens = logit_lens(model, ids[:p], loops, topk=1, target_ids=ids[1:p + 1], positions=[p - 1])
+    return lens["target_rank"][:, 0]
 
 
 def stage_lens(rows, items, out_root: Path, model, tok, n=30, loop_set=(1, 2, 4)):
@@ -207,6 +211,7 @@ def stage_lens(rows, items, out_root: Path, model, tok, n=30, loop_set=(1, 2, 4)
     by_id = {it.id: it for it in items}
     sel = pick_lens_rows(rows, tok, items, n // 3)
     arrays, rec = {}, []
+    n_in, n_rec, _ = geom(model)
     for r, t in sel:
         ids, npr = row_ids(tok, r, by_id[r["id"]])
         for L in loop_set:
@@ -214,11 +219,11 @@ def stage_lens(rows, items, out_root: Path, model, tok, n=30, loop_set=(1, 2, 4)
             arrays[f"{r['id']}|L{L}"] = rk
             hit = np.nonzero(rk == 0)[0]
             rec.append({"id": r["id"], "source": r["source"], "loops": L,
-                        "first_top1": int(hit[0]) if len(hit) else -1, "n_layers": len(rk),
-                        "at_boundary": [bool(rk[16 + 40 * (c + 1) - 1] == 0) for c in range(L)]})
+                        "first_top1": int(hit[0]) if len(hit) else -1, "n_layers": len(rk), "trunc": is_trunc(r),
+                        "at_boundary": [bool(rk[n_in + n_rec * (c + 1) - 1] == 0) for c in range(L)]})
     np.savez(j / "lens.npz", **arrays)
     text = ("# Logit lens at the final-answer token\n\nEvidence: `results/wsp/corpus/lens.npz` (rank per virtual layer, "
-            "key `id|L<loops>`; rank 0 = top-1). Teacher-forced prompt + own output; first_top1 = -1 means never.\n\n")
+            "key `id|L<loops>`; rank 0 = top-1). Teacher-forced prompt + own output (finished rows only); first_top1 = -1 means never.\n\n")
     body = []
     for s in sorted({x["source"] for x in rec}):
         for L in loop_set:
@@ -230,7 +235,7 @@ def stage_lens(rows, items, out_root: Path, model, tok, n=30, loop_set=(1, 2, 4)
     for L in loop_set:
         for c in range(L):
             g = [x["at_boundary"][c] for x in rec if x["loops"] == L]
-            body.append([L, c + 1, 16 + 40 * (c + 1) - 1, float(np.mean(g)) if g else "-"])
+            body.append([L, c + 1, n_in + n_rec * (c + 1) - 1, float(np.mean(g)) if g else "-"])
     text += "\n## Fraction already top-1 at each loop boundary\n\n" + table(
         ["loops", "after loop", "virtual layer", "fraction top-1"], body)
     (md / "02-lens.md").write_text(text)
@@ -261,22 +266,38 @@ def probe_layers(total=72):
     return sorted(set(range(0, total, 8)) | {total - 1})  # brief says 0..88 but loops=1 has only 72 virtual layers
 
 
+def probe_block(X, y, src, layers):
+    """Per-layer CV AUC on all rows and within each source, plus a source one-hot baseline (same pipeline and null)."""
+    srcs = sorted(set(src))
+    src, y = np.asarray(src), np.asarray(y)
+    onehot = np.array([[s == t for t in srcs] for s in src], dtype=float)
+    out = {"source_onehot": cv_auc(onehot, y), "all": {}, "within": {s: {} for s in srcs}}
+    for i, v in enumerate(layers):
+        out["all"][v] = cv_auc(X[:, i], y)
+        for s in srcs:
+            m = src == s
+            out["within"][s][v] = cv_auc(X[m, i], y[m])
+    return out
+
+
 def stage_probes(rows, items, out_root: Path, model, tok, tax=None):
     from dory.wsp.lens import collect_resid
     j, md = dirs(out_root)
     if (j / "probes.json").exists():
         return print("skip probes")
     by_id = {it.id: it for it in items}
-    layers = probe_layers()
+    n_in, n_rec, n_out = geom(model)
+    total = n_in + n_rec + n_out
+    layers = probe_layers(total)
     pids = [prompt_ids(tok, by_id[r["id"]].prompt) for r in rows]
     X = collect_resid(model, pids, 1, layers, "prompt_end")
     res = {"layers": layers, "prompt_end": {}, "onset": {}}
     for name, y in (("will_truncate", [is_trunc(r) for r in rows]), ("will_be_correct", [bool(r["correct"]) for r in rows])):
-        res["prompt_end"][name] = {v: cv_auc(X[:, i], y) for i, v in enumerate(layers)}
-    tax = tax or json.loads((j / "taxonomy.json").read_text())
+        res["prompt_end"][name] = probe_block(X, y, [r["source"] for r in rows], layers)
+    tax = json.loads((j / "taxonomy.json").read_text()) if tax is None else tax
     loop_rows = [(r, next(x for x in tax if x["id"] == r["id"])) for r in rows
                  if any(x["id"] == r["id"] and x["class"] == "loop" for x in tax)]
-    ol = [layers[-1] if v == "last" else v for v in (40, "last")]  # brief's layer 72 does not exist at loops=1
+    ol = sorted({min(40, total - 1), total - 1})  # brief's layer 72 does not exist at loops=1
     feats, labels, groups = [], [], []
     for r, x in loop_rows:
         ids, npr = row_ids(tok, r, by_id[r["id"]])
@@ -294,8 +315,14 @@ def stage_probes(rows, items, out_root: Path, model, tok, tax=None):
     text = ("# Probes\n\nEvidence: `results/wsp/corpus/probes.json`. StandardScaler + LogisticRegression, 5-fold CV AUC, "
             "null = 5 label shuffles.\n")
     for name, d in res["prompt_end"].items():
-        text += f"\n## Prompt-end residual -> {name} (n={len(rows)})\n\n" + table(
-            ["virtual layer", "AUC", "std", "null", "null std"], [[v] + f(d[v]) for v in layers])
+        srcs = list(d["within"])
+        g = lambda x: ["-", "-"] if not x else [f"{x['auc_mean']:.3f}", f"{x['null_mean']:.3f}"]
+        text += (f"\n## Prompt-end residual -> {name} (n={len(rows)})\n\n"
+                 "Within-source columns fit on that source's rows only. The source one-hot row is the confound baseline "
+                 "(source identity alone, same pipeline and null).\n\n"
+                 + table(["virtual layer", "AUC", "std", "null", "null std"] + [f"{s} AUC / null" for s in srcs],
+                         [["source one-hot"] + f(d["source_onehot"]) + ["-"] * len(srcs)]
+                         + [[v] + f(d["all"][v]) + [" / ".join(g(d["within"][s][v])) for s in srcs] for v in layers]))
     text += (f"\n## Repetition onset (loop rows: {len(loop_rows)}, tokens: {len(labels)}; GroupKFold by item)\n\n"
              + table(["virtual layer", "AUC", "std", "null", "null std"], [[v] + f(d) for v, d in res["onset"].items()]))
     (md / "03-probes.md").write_text(text)
@@ -313,28 +340,47 @@ def pick_balanced(rows, n):
     return out[:n]
 
 
-def mean_effect(model, group, comp, loops=1):
+def clean_logprobs(model, groups, loops=1):
+    from dory.wsp.lens import teacher_forced_logprob
+    return {g: [teacher_forced_logprob(model, ids, npr, loops) for ids, npr in rs] for g, rs in groups.items()}
+
+
+def mean_effect(model, group, clean, comp, loops=1):
     from dory.wsp.lens import ablate
-    return float(np.mean([ablate(model, ids, npr, loops, comp, "zero") for ids, npr in group]))
+    return float(np.mean([ablate(model, ids, npr, loops, comp, "zero", clean=c)
+                          for (ids, npr), c in zip(group, clean)]))
 
 
-def measure(model, groups, comps, loops=1, res=None):
+def measure(model, groups, comps, loops=1, res=None, cleans=None, checkpoint=None, tag=""):
+    """Skips components already in `res` (resume); calls checkpoint(res) every 25 components and at the end."""
     res = res if res is not None else {}
-    for c in comps:
-        t, f = mean_effect(model, groups["trunc"], c, loops), mean_effect(model, groups["fin"], c, loops)
+    cleans = cleans or clean_logprobs(model, groups, loops)
+    for i, c in enumerate(comps):
+        print(f"{tag} component {i + 1}/{len(comps)}: {c[:40]}", flush=True)
+        if c in res:
+            continue
+        t = mean_effect(model, groups["trunc"], cleans["trunc"], c, loops)
+        f = mean_effect(model, groups["fin"], cleans["fin"], c, loops)
         res[c] = {"trunc": t, "fin": f, "diff": t - f}
+        if checkpoint and (i + 1) % 25 == 0:
+            checkpoint(res)
+    if checkpoint:
+        checkpoint(res)
     return res
 
 
-def run_ablations(model, groups, loops=1, top_attn=5, top_mlp=5, n_neurons=64):
+def run_ablations(model, groups, loops=1, top_attn=5, top_mlp=5, n_neurons=64, res=None, checkpoint=None):
     """groups: {"trunc": [(ids, n_prompt)], "fin": [...]}. Returns {component: {trunc, fin, diff}}."""
     cfg = model.model.config
     n_phys = 2 * len(model.model.model.layers)
-    res = measure(model, groups, [f"layer.{p}" for p in range(n_phys)], loops)
+    cleans = clean_logprobs(model, groups, loops)
+    kw = dict(loops=loops, cleans=cleans, checkpoint=checkpoint)
+    res = measure(model, groups, [f"layer.{p}" for p in range(n_phys)], res=res, tag="layers", **kw)
     top = lambda par, k: sorted((p for p in range(par, n_phys, 2)),
                                 key=lambda p: -abs(res[f"layer.{p}"]["diff"]))[:k]
     attn, mlps = top(0, top_attn), top(1, top_mlp)
-    measure(model, groups, [f"head.{p}.{h}" for p in attn for h in range(cfg.num_attention_heads)], loops, res)
+    measure(model, groups, [f"head.{p}.{h}" for p in attn for h in range(cfg.num_attention_heads)],
+            res=res, tag="heads", **kw)
     import torch
     mean_act = {}
     for g in ("trunc", "fin"):
@@ -349,7 +395,7 @@ def run_ablations(model, groups, loops=1, top_attn=5, top_mlp=5, n_neurons=64):
     for p in mlps:
         idx = np.argsort(-np.abs(mean_act["trunc"][p] - mean_act["fin"][p]))[:n_neurons]
         comps.append(f"neurons.{p}:" + ",".join(str(int(i)) for i in idx))
-    measure(model, groups, comps, loops, res)
+    measure(model, groups, comps, res=res, tag="neurons", **kw)
     return res
 
 
@@ -369,18 +415,25 @@ def ablation_table(res, k=20):
 
 def stage_ablations(rows, items, out_root: Path, model, tok, n=20):
     j, md = dirs(out_root)
-    if (j / "ablations.json").exists():
+    path = j / "ablations.json"
+    part = json.loads(path.read_text()) if path.exists() else None
+    if part and part.get("done"):
         return print("skip ablations")
     tax = json.loads((j / "taxonomy.json").read_text())
     sel, groups = build_groups(rows, tax, items, tok, n)
-    res = run_ablations(model, groups)
-    (j / "ablations.json").write_text(json.dumps(
-        {"items": {g: [r["id"] for r in rs] for g, rs in sel.items()}, "components": res}, indent=1))
+    ids = {g: [r["id"] for r in rs] for g, rs in sel.items()}
+    if part and part["items"] != ids:
+        raise RuntimeError(f"{path}: partial file was made with different items; delete it or pass the same --n")
+    res = part["components"] if part else {}
+    save = lambda r, done=False: path.write_text(json.dumps({"items": ids, "components": r, "done": done}, indent=1))
+    run_ablations(model, groups, res=res, checkpoint=save)
+    save(res, True)
     (md / "04-ablations.md").write_text(
         "# Component ablations (teacher-forced logprob of own continuation, loops=1, mode zero)\n\n"
         f"Evidence: `results/wsp/corpus/ablations.json`. {n} truncated (loop/overlong) vs {n} finished-correct rows; "
         "effect = mean change in logprob; differential = truncated minus finished. Note: head/neuron \"zero\" is "
-        "renormalized by nGPT's L2 norm and is not comparable to layer skip (Task 6 review).\n\n"
+        "renormalized by nGPT's L2 norm and is not comparable to layer skip (Task 6 review). Neurons are ranked by "
+        "mlp_act before ffn_sub_norm while the ablation zeroes after it, so the magnitude ranking is approximate.\n\n"
         f"## Top 20 by |differential|\n\n{ablation_table(res)}\n")
 
 

@@ -79,3 +79,72 @@ def test_template_matches_server():
     tok = wc.get_tok()
     for it in evalsets.load_split("train")[:5]:
         assert wc.prompt_ids(tok, it.prompt) == template_ids(os.environ["WSP_SERVER_URL"], it.prompt)
+
+
+class FakeTok:
+    def apply_chat_template(self, msgs, add_generation_prompt, tokenize, enable_thinking):
+        return "U:" + msgs[0]["content"] + "\nA:"
+
+    def encode(self, text, add_special_tokens=False):
+        return list(text.encode())
+
+    def decode(self, ids):
+        return bytes(ids).decode()
+
+
+CFG256 = dict(CFG, vocab_size=256)
+
+
+def _rows(n):
+    from dory.evalsets import Item
+    rows, items = [], []
+    for i in range(n):
+        src = "gsm8k" if i % 2 else "mmlu_pro"
+        out = "work. The answer is 5." if src == "gsm8k" else "work. The answer is (B) ok"
+        trunc = i % 4 in (0, 1)
+        rows.append({"id": f"x{i}", "source": src, "output": out, "n_gen": 512 if trunc else 20,
+                     "correct": i % 3 == 0, "error": None})
+        items.append(Item(f"x{i}", src, "q" * (i + 1), "A"))
+    return rows, items
+
+
+def test_stage_lens_tiny(tmp_path):
+    rows, items = _rows(6)
+    model = DoryTorch.from_config(CFG256)
+    wc.stage_lens(rows, items, tmp_path, model, FakeTok(), n=6, loop_set=(1, 2))
+    z = np.load(tmp_path / "results/wsp/corpus/lens.npz")
+    assert len(z.files) == 2 * 2 * 1  # only finished rows (i%4 in 2,3): x2 mmlu_pro, x3 gsm8k; two loops each
+    assert z["x3|L1"].shape == (6,) and z["x3|L2"].shape == (8,)
+    assert "02-lens" in str(next((tmp_path / "research/wsp/corpus").glob("02-*")))
+
+
+def test_stage_probes_tiny(tmp_path):
+    rows, items = _rows(24)
+    model = DoryTorch.from_config(CFG256)
+    wc.stage_probes(rows, items, tmp_path, model, FakeTok(), tax=[])
+    res = json.loads((tmp_path / "results/wsp/corpus/probes.json").read_text())
+    for name in ("will_truncate", "will_be_correct"):
+        d = res["prompt_end"][name]
+        assert set(d) == {"source_onehot", "all", "within"} and set(d["within"]) == {"gsm8k", "mmlu_pro"}
+        assert d["source_onehot"]["auc_mean"] is not None
+    assert (tmp_path / "research/wsp/corpus/03-probes.md").exists()
+
+
+def test_ablate_clean_arg_matches():
+    from dory.wsp.lens import ablate, teacher_forced_logprob
+    model = DoryTorch.from_config(CFG)
+    ids = list(range(1, 13))
+    c = teacher_forced_logprob(model, ids, 6, 2)
+    assert ablate(model, ids, 6, 2, "layer.2", clean=c) == ablate(model, ids, 6, 2, "layer.2")
+
+
+def test_ablation_resume(tmp_path):
+    model = DoryTorch.from_config(CFG)
+    rng = np.random.default_rng(1)
+    mk = lambda: (list(rng.integers(1, 64, 12)), 6)
+    groups = {"trunc": [mk(), mk()], "fin": [mk(), mk()]}
+    full = wc.run_ablations(model, groups, top_attn=1, top_mlp=1, n_neurons=2)
+    part = {k: v for k, v in full.items() if k.startswith("layer.")}
+    calls = []
+    wc.run_ablations(model, groups, top_attn=1, top_mlp=1, n_neurons=2, res=part, checkpoint=lambda r: calls.append(len(r)))
+    assert part == full and calls and calls[-1] == len(full)

@@ -21,16 +21,20 @@ def _ids(ids) -> torch.LongTensor:
 
 
 @torch.no_grad()
-def logit_lens(model, ids, loops: int, topk: int = 5, target_ids=None) -> dict:
+def logit_lens(model, ids, loops: int, topk: int = 5, target_ids=None, positions=None) -> dict:
     """Final norm + lm_head on every `resid.{v}`. target_ids: [T] token per position (e.g. next token) -> target_rank
-    (0 = top-1)."""
+    (0 = top-1). positions: optional list of token positions to evaluate (default all); outputs then have len(positions)
+    in the position axis and target_ids is still indexed over all T positions."""
     m = model.model
     _, acts = model.forward(_ids(ids), loops, {"resid"})
     dt = next(m.parameters()).dtype
     tgt = None if target_ids is None else torch.as_tensor(target_ids).reshape(-1).to(m.device)
+    if tgt is not None and positions is not None:
+        tgt = tgt[positions]
     top_ids, top_p, rank = [], [], []
     for v in range(len(acts)):
-        lg = m.lm_head(m.model.norm(acts[f"resid.{v}"].to(dtype=dt, device=m.device))).float()
+        r = acts[f"resid.{v}"] if positions is None else acts[f"resid.{v}"][positions]
+        lg = m.lm_head(m.model.norm(r.to(dtype=dt, device=m.device))).float()
         p, i = lg.softmax(-1).topk(topk, -1)
         top_ids.append(i.cpu()), top_p.append(p.cpu())
         if tgt is not None:
@@ -77,18 +81,20 @@ def _replace(x, mode):
     return torch.zeros_like(x) if mode == "zero" else x.mean(1, keepdim=True).expand_as(x).clone()
 
 
-def ablate(model, ids, n_prompt: int, loops: int, component: str, mode: str = "zero") -> float:
+def ablate(model, ids, n_prompt: int, loops: int, component: str, mode: str = "zero", clean=None) -> float:
     """Mean (ablated - clean) teacher-forced logprob over ids[n_prompt:]. `ids` should hold the model's own continuation.
 
     zero: head/neurons are set to 0; mlp/layer are skipped (the half-block leaves the residual unchanged, since the
     nGPT update is h + rate*(norm(out) - h) and out is replaced by the unit-norm input h).
     mean: head/neurons/sublayer output replaced by its mean over token positions in the current run (includes
     future positions, a standard mean-ablation approximation); mlp/layer mean replaces the pre-norm sublayer output.
+    clean: optional precomputed teacher_forced_logprob(model, ids, n_prompt, loops), to avoid recomputing it.
     """
     if mode not in ("zero", "mean"):
         raise ValueError(mode)
     kind, layer, is_attn, arg = _parse(model, component)
-    clean = teacher_forced_logprob(model, ids, n_prompt, loops)
+    if clean is None:
+        clean = teacher_forced_logprob(model, ids, n_prompt, loops)
     if kind == "head":
         d = layer.self_attn.head_dim
 

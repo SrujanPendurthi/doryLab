@@ -75,3 +75,11 @@ def test_permute_options_remaps_gold():
     assert out.gold == "D" and permute_options(it, [1, 0, 2, 3]).gold == "A"
     with pytest.raises(ValueError):
         permute_options(it, [0, 1])
+
+
+def test_lens_positions_matches_slice(model):
+    tgt = IDS[1:] + [0]
+    full = logit_lens(model, IDS, LOOPS, topk=3, target_ids=tgt)
+    sub = logit_lens(model, IDS, LOOPS, topk=3, target_ids=tgt, positions=[4, 7])
+    np.testing.assert_array_equal(sub["target_rank"], full["target_rank"][:, [4, 7]])
+    np.testing.assert_array_equal(sub["top_ids"], full["top_ids"][:, [4, 7]])
