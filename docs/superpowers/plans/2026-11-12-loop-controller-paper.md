@@ -14,6 +14,8 @@
 
 Working title: **"How Many Loops? Per-Request Compute Allocation for a Looped LLM on a Laptop."**
 
+Author: Srujan Pendurthi (sole author). Venue: plain arXiv preprint (no page limit; standard `article` class, 11pt).
+
 Claims, in order of weight (each must be backed by a figure or table):
 - **C1, flat fixed-k accuracy with large per-item headroom.** Holdout fixed k=1/2/4 = 0.600/0.587/0.610; the per-prompt oracle reaches 0.670 at mean k 1.11 and fewer modeled seconds than fixed k=1 (11.2 vs 10.4 s; fixed 2 is 18.5 s).
 - **C2, learned routers capture none of that headroom.** Text-feature policy +0.7 pt vs fixed2 (CI −1.0 to +2.7); hidden-state probe +0.3 pt. Final split (100): text 0.630 vs chosen 0.620, noise.
@@ -33,7 +35,7 @@ Non-goals: new controller methods; claims about BF16 or sampled decoding; per-to
 - Sources of truth: `results/labels_{train,holdout,final}.jsonl`, `results/sweep_*.jsonl`, `results/speed.json`, `results/spec_ab.jsonl`, `results/draft_sweep.jsonl`, `results/spec_k4.json`, `results/offload_ab.jsonl`, `results/sweep_holdout_q8.jsonl`, `results/ane_bench.json`, `results/live_gate.json`, `results/bench.csv`. Where a value is only in `results/decisions.md`, recompute it from these files; if it can't be recomputed, cite decisions.md in a comment beside the macro.
 - Report final-split numbers from the post-regrade rerun and disclose that the final split was evaluated twice (before and after a grader fix, Ruling AJ), along with the pre-regrade values.
 - Disclose: Q5_K_M weights, greedy decoding, thinking disabled (the card recommends temperature 1.0 and reasoning on), one machine (M4, 24 GB), holdout-informed heuristic (C3), unmerged llama.cpp PR build (pinned commit), MMLU truncation.
-- No GPU runs in Tasks 1-5 (the GPU belongs to the weight-space work). Task 6 is the only GPU task and is optional.
+- No GPU runs in Tasks 1-5 (the GPU belongs to the weight-space work). Task 6 is the only GPU task, queued after the weight-space plan.
 - Work on branch `paper` from `main` in a worktree `.worktrees/paper`. Commits end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
 ## Review Focus
@@ -109,9 +111,9 @@ Non-goals: new controller methods; claims about BF16 or sampled decoding; per-to
 - [ ] **Step 1:** A fresh reviewer (most capable model) reads `main.pdf`'s source and, for each claim-bearing sentence, records the macro, table or figure backing it and whether the wording fits the evidence. That means no "improves" when a CI includes zero, post hoc labeled as such, and the truncation caveat attached to every MMLU-derived claim.
 - [ ] **Step 2:** Fix every flagged sentence in one pass, rebuild, commit.
 
-### Task 6 (optional, GPU): MMLU-Pro at 1024 tokens
+### Task 6 (GPU): MMLU-Pro at 1024 tokens
 
-Runs only if the user approves it and the GPU is free of weight-space work.
+Approved by the user; queued to run after the weight-space plan (`docs/superpowers/plans/2026-11-12-weight-space-programming.md`) finishes, so it never competes with that work for the GPU. Tasks 1-5 ship first; Task 6 then adds C4b and re-audits the changed sentences.
 
 **Files:**
 - Create: `results/sweep_holdout_mmlu1024.jsonl`, a `tab_mmlu1024.tex` addition in Task 1's generator
