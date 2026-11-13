@@ -38,7 +38,7 @@ def _pre_labels(split):
 
 
 def _feat(name):
-    """Cached feature file: worktree results/, else the main checkout's (gitignored, not in worktrees)."""
+    """Cached feature file: in-repo results/ (text features are committed with git add -f), else the main checkout's."""
     for d in (R, ROOT.parents[1] / "results"):
         if (d / name).exists():
             return d / name

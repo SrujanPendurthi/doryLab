@@ -56,7 +56,7 @@ Ruling Y: tie counts as pass (gate is >=) — continue; flagged that the fixed-k
 
 Ruling Z: continue past the failed balance gate (plan says stop+report) — class_weight="balanced" already in fit, remaining phases cost minutes, Task 8 gate measures real benefit; the user's standing instruction is to keep going — cost if wrong: ~1h compute on a router that may show no gain (itself a reportable result).
 
-Ruling AA: controller fixed object-dtype label bug inline (policy.py:83, probe.py:72 .astype(int); test now includes None labels, red then green) — 2-line fix, review would cost more than the fix — cost if wrong: final review catches it. Commit $(git rev-parse --short HEAD)
+Ruling AA: controller fixed object-dtype label bug inline (policy.py:83, probe.py:72 .astype(int); test now includes None labels, red then green) — 2-line fix, review would cost more than the fix — cost if wrong: final review catches it.
 
 Ruling AB: keep plan's None fallback (fixed2) as the chosen policy even though fixed1+code floor scores better on holdout (60.7 vs 58.7, cheaper); report fixed1-floor on final as a comparison only — choosing the fallback by looking at holdout would be selection, and the plan fixes None=fixed2 — cost if wrong: the user's recommended default may be k=1+floor; the decisions note says so.
 
@@ -64,9 +64,9 @@ Ruling AC: controller ran 10b gate/final inline via two small scripts (scripts/l
 
 Ruling AD: Router._decide now holds a threading.Lock around text_features — live gate with 4 threads hit Metal assertion "Scheduled handler provided after commit call" (MPS classifier not thread-safe) — cost if wrong: decisions serialized (~ms each), negligible.
 
-Ruling AE: not fixing, since the text policy is not deployed and 44-60 ms is about 0.3% of a ~20 s request.
+Ruling AE [router overhead]: not fixing, since the text policy is not deployed and 44-60 ms is about 0.3% of a ~20 s request.
 
-Ruling AF: not done in this run, because it needs about 6+ GPU hours, and the final split's one-shot evaluation is already spent.
+Ruling AF [MMLU-Pro re-sweep at 1024 tokens]: not done in this run, because it needs about 6+ GPU hours, and the final split's one-shot evaluation is already spent.
 
 Ruling AG: leave code minors (None policy still runs classifier; memgate didn't cover learned-policy 3-server router; grader last-number/last-line false positives ~0.5pt) — none changes the headline — cost if wrong: small.
 
