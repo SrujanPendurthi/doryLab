@@ -9,3 +9,4 @@ __pycache__/
 results/features_*.npy
 results/logs/
 .venv-wsp/
+results/wsp/corpus/*.npz
