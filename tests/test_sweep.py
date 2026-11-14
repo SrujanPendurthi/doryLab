@@ -118,3 +118,18 @@ def test_latest_rows_prefers_clean():
     assert sw.latest_rows([e, ok])[key] is ok
     assert sw.latest_rows([ok, e])[key] is ok
     assert sw.latest_rows([e])[key] is e
+
+
+def test_max_tokens_override(monkeypatch, tmp_path):
+    caps, flags = [], []
+    def comp(url, prompt, cap):
+        caps.append(cap)
+        return SimpleNamespace(text="t", n_prompt=1, n_gen=1024)
+    monkeypatch.setattr(sw, "complete", comp)
+    monkeypatch.setattr(sw, "grade", lambda it, o, t=False: flags.append(t) or True)
+    patch_server(monkeypatch, [])
+    it = Item("m0", "mmlu_pro", "p", "A")
+    sw.run_sweep([it], [1], "mmlu1024", tmp_path / "g", tmp_path / "o.jsonl", 1, max_tokens={"mmlu_pro": 1024})
+    assert caps == [1024] and flags == [True]
+    sw.run_sweep([mk(0)], [1], "q5", tmp_path / "g", tmp_path / "o2.jsonl", 1)
+    assert caps[-1] == 512

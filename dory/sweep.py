@@ -50,7 +50,8 @@ def pending(items, k, variant, done, lazy):
     return [it for it in items if it.id not in have]
 
 
-def run_sweep(items, ks, variant, gguf, out, slots, kv_type="f16", lazy=False):
+def run_sweep(items, ks, variant, gguf, out, slots, kv_type="f16", lazy=False, max_tokens=None):
+    caps = max_tokens or MAX_TOKENS
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     lock = threading.Lock()
@@ -73,10 +74,10 @@ def run_sweep(items, ks, variant, gguf, out, slots, kv_type="f16", lazy=False):
                     r = {"id": it.id, "source": it.source, "k": k, "variant": variant, "output": "",
                          "correct": False, "n_prompt": 0, "n_gen": 0, "error": None}
                     try:
-                        c = complete(srv.url, it.prompt, MAX_TOKENS[it.source])
+                        c = complete(srv.url, it.prompt, caps[it.source])
                         r.update(output=c.text, n_prompt=c.n_prompt, n_gen=c.n_gen)
                         try:
-                            r["correct"] = bool(grade(it, c.text, c.n_gen >= MAX_TOKENS[it.source]))
+                            r["correct"] = bool(grade(it, c.text, c.n_gen >= caps[it.source]))
                         except Exception as e:
                             r["error"] = f"grade: {e}"
                     except ServerError as e:
@@ -96,6 +97,7 @@ def main():
     ap.add_argument("--kv", default="f16")
     ap.add_argument("--lazy", action="store_true")
     ap.add_argument("--sources")
+    ap.add_argument("--max-tokens", type=int, help="override cap for every selected source")
     ap.add_argument("--slots", type=int, default=4)
     ap.add_argument("--gguf", type=Path, default=ROOT / "models/dory-q5.gguf")
     a = ap.parse_args()
@@ -103,7 +105,16 @@ def main():
     if a.sources:
         keep = set(a.sources.split(","))
         items = [i for i in items if i.source in keep]
-    run_sweep(items, [int(x) for x in a.ks.split(",")], a.variant, a.gguf, a.out, a.slots, a.kv, a.lazy)
+    mt = {s: a.max_tokens for s in {i.source for i in items}} if a.max_tokens else None
+    ks = [int(x) for x in a.ks.split(",")]
+    run_sweep(items, ks, a.variant, a.gguf, a.out, a.slots, a.kv, a.lazy, mt)
+    if mt:  # per-k summary
+        cap = a.max_tokens
+        for k in ks:
+            rs = [r for r in latest_rows(read_rows(a.out)).values() if r["variant"] == a.variant and r["k"] == k]
+            n = max(len(rs), 1)
+            print(f"k={k} n={len(rs)} acc={sum(bool(r['correct']) for r in rs) / n:.3f} "
+                  f"trunc={sum(r['n_gen'] >= cap for r in rs) / n:.3f}")
 
 
 if __name__ == "__main__":
