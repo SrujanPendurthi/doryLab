@@ -288,6 +288,31 @@ def compute():
         put(f"{S}MmluRescued", len(resc), 0)
         put(f"{S}MmluRescuedTruncOne", sum(trunc(r, 1) for r in resc), 0)
 
+    # --- C4b: MMLU-Pro holdout re-swept at max_tokens 1024 (analysis only; controller stays on 512-cap labels) ---
+    m24 = {(i, k): r for (i, k, _), r in latest_rows(read_rows(R / "sweep_holdout_mmlu1024.jsonl")).items()}
+    m512 = {(r["id"], k): (r["correct_by_k"][str(k)], r["tokens_by_k"][str(k)][1] >= 512) for r in hm for k in (1, 2, 4)}
+    ids24 = sorted({i for i, _ in m24})
+    assert set(ids24) == {r["id"] for r in hm}
+    c24 = {(i, k): (bool(m24[i, k]["correct"]), m24[i, k]["n_gen"] >= 1024) for i in ids24 for k in (1, 2, 4)}
+    M = {}
+    for k in (1, 2, 4):
+        M[k] = dict(a5=sum(m512[i, k][0] for i in ids24), a10=sum(c24[i, k][0] for i in ids24),
+                    t5=sum(m512[i, k][1] for i in ids24), t10=sum(c24[i, k][1] for i in ids24),
+                    resc=sum((not m512[i, k][0]) and m512[i, k][1] and c24[i, k][0] for i in ids24))
+        for key, nm in (("a5", "AccSmallCap"), ("a10", "AccBigCap"), ("t5", "TruncSmallCap"), ("t10", "TruncBigCap"),
+                        ("resc", "RescuedByCap")):
+            put(f"MmluCap{KW[k]}{nm}", M[k][key], 0)
+    for k in (2, 4):
+        w = sum(c24[i, k][0] and not c24[i, 1][0] for i in ids24); l = sum(c24[i, 1][0] and not c24[i, k][0] for i in ids24)
+        put(f"MmluCap{KW[k]}Wins", w, 0); put(f"MmluCap{KW[k]}Losses", l, 0)
+        put(f"MmluCap{KW[k]}McNemarP", binomtest(min(w, l), w + l, 0.5).pvalue if w + l else 1.0, 2)
+    put("MmluCapN", len(ids24), 0)
+    put("MmluCapSharedTrunc", sum(all(c24[i, k][1] for k in (1, 2, 4)) for i in ids24), 0)
+    put("MmluCapFourLead", (M[4]["a10"] - M[1]["a10"]) / len(ids24))
+    put("MmluCapLiftMin", min(M[k]["a10"] - M[k]["a5"] for k in M), 0)
+    put("MmluCapLiftMax", max(M[k]["a10"] - M[k]["a5"] for k in M), 0)
+    compute.cap = M
+
     compute.tables = (rows, T, sysrows, sp, speed)
     return V
 
@@ -337,6 +362,12 @@ def write(out_dir: Path):
     for split in ("holdout", "train"):
         for (s, k), v in T[split].items():
             tl.append(f"{split} & {SRC_LABEL[s]}, {k} & {v['n']} & {v['trunc']:.3f} & {v['acc_nt']:.3f} & {v['acc']:.3f} \\\\")
+    cap = compute.cap
+    cl = [r"\begin{tabular}{lrrrrr}", r"\toprule",
+          r"$k$ & Acc.\ @512 & Acc.\ @1024 & Trunc.\ @512 & Trunc.\ @1024 & Wrong+trunc.\ @512, right @1024 \\", r"\midrule"]
+    for k, v in cap.items():
+        cl.append(f"{k} & {v['a5']} & {v['a10']} & {v['t5']} & {v['t10']} & {v['resc']} \\\\")
+    (out_dir / "tab_mmlu1024.tex").write_text("\n".join(cl + [r"\bottomrule", r"\end{tabular}", ""]))
     (out_dir / "tab_truncation.tex").write_text("\n".join(tl + [r"\bottomrule", r"\end{tabular}", ""]))
 
 

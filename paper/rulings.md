@@ -1,6 +1,6 @@
 # Protocol rulings record
 
-Every ruling made during the study and the paper work, with its rationale and the cost if wrong. Rulings A-AG are copied verbatim from the controller's ledger. AH-AO are the follow-up rulings. P1-P8 are the paper-process rulings. Gate results are in `results/decisions.md`.
+Every ruling made during the study and the paper work, with its rationale and the cost if wrong. Rulings A-AG are copied verbatim from the controller's ledger. AH-AO are the follow-up rulings. P1-P11 are the paper-process rulings. Gate results are in `results/decisions.md`.
 
 ## Rulings A-AG
 
@@ -88,7 +88,7 @@ Ruling AN: Task 11 gate PASSES with n4 (acc 0.84>=0.80, 1.21x>=1.2x, identical).
 
 Ruling AO: not wired into router (saves ~26 ms/request = ~0.1%, costs +1.2 GB RAM and a segfault-prone dependency) — cost if wrong: 26 ms/request. Recorded in decisions.md.
 
-## Paper-process rulings P1-P8
+## Paper-process rulings P1-P11
 
 Ruling P1: proceed subagent-driven without an explicit execution-method answer — user answered the open decisions and earlier asked for Sonnet subagents; GPU-free work — cost if wrong: paper drafting the user wanted to do differently, easily discarded.
 
@@ -105,3 +105,9 @@ Ruling P6: plan C1 wording "oracle costs fewer modeled seconds than fixed k=1" w
 Ruling P7: citation verification must read full text (arxiv.org/html/<id> incl. appendices via offsets), not abstract pages; T3's two "unverified" flags were abstract-only false negatives — cost if wrong: none.
 
 Ruling P8: commit the full rulings record into the paper branch as paper/rulings.md (A–AG from rulings-A-AG-full.txt + AH–AO from followups ledger + P1–P8) and point Appendix A at it — the record otherwise lives only in gitignored scratch — cost if wrong: an extra file in the repo.
+
+Ruling P9: no public remote exists, so the paper says "available from the author on request" with a TODO(author) comment until the user supplies a URL — cost if wrong: one-line edit.
+
+Ruling P10: add a "Use of AI tools" disclosure with default wording (TODO(author) confirm) and move process-only rulings out of Appendix A to paper/rulings.md — cost if wrong: author edits wording.
+
+Ruling P11: C4b uses the 1024-cap re-sweep only as an analysis of label sensitivity; the controller and its reported results stay on the 512-cap labels (no refit) — cost if wrong: refit and re-run final test.
