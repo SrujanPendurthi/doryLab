@@ -66,3 +66,11 @@ def test_interrupt_during_startup_stops_child(monkeypatch, tmp_path):
     with pytest.raises(KeyboardInterrupt):
         Server([], 1)
     assert made and made[0]._p.poll() is not None
+
+
+def test_server_args_runtime_loops():
+    a = server_args(Path("m.gguf"), 4, 8080, slots=1, runtime_loops=True, spec_draft_loops=1)
+    assert "--override-kv" not in a and "--jinja" in a
+    i = a.index("--spec-type")
+    assert a[i:i + 6] == ["--spec-type", "draft-simple", "--spec-draft-n-max", "4", "--spec-draft-loops", "1"]
+    assert "--spec-type" not in server_args(Path("m.gguf"), 4, 8080, runtime_loops=True)
