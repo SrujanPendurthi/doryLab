@@ -1,0 +1,301 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs,graphicx,amsmath,array,xcolor,microtype}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage[hidelinks]{hyperref}
+\usepackage{url}
+
+% Result numbers: generated macros only.
+\input{generated/numbers.tex}
+% Signed formatting for generated deltas: \sg{\Macro} prints +0.010 / -0.020 with a true minus.
+\makeatletter
+\def\sg@aux#1#2\relax{\if#1-$-$#2\else\if#1+{+}#2\else{+}#1#2\fi\fi}
+\newcommand{\sg}[1]{\expandafter\sg@aux#1\relax}
+\makeatother
+% Protocol constants (configuration, not results).
+\newcommand{\CapText}{512}
+\newcommand{\CapCode}{768}
+\newcommand{\LayersIn}{16}
+\newcommand{\LayersRec}{40}
+\newcommand{\LayersOut}{16}
+\newcommand{\LayersAll}{72}
+\newcommand{\LayersGpu}{54}
+\newcommand{\LlamaRef}{\texttt{1c3cdd2}}
+\newcommand{\MemGb}{24}
+% Pre-set gate values (protocol, from the plan and decisions.md)
+\newcommand{\GateGain}{0.010}% text policy: accuracy gain over fixed k=2 on holdout
+\newcommand{\GateCheap}{15\%}% ... or CI contains zero and at least this much cheaper
+\newcommand{\GateProbeGain}{0.010}% probe must beat text by this at matched mean k
+\newcommand{\GateKv}{0.010}% q8_0 KV must stay within this accuracy of f16
+\newcommand{\LabelThresh}{13\%}% fig_headroom: segment labels drawn at or above this width
+\newcommand{\AJItems}{about two}% Ruling AJ: headline shift in items after regrade (decisions.md)
+\newcommand{\LayaMs}{33}% Laya model card, self-reported on a Tesla T4 (cited fact, not measured here)
+% Cited facts from Dory (arXiv 2611.03998, Sec. 6.2; read from the full text, not measured here)
+\newcommand{\DorySpecLo}{1.37}% decode throughput speedup, self-speculative k=1 draft / k=4 verify, gamma=4 (Fig. 6)
+\newcommand{\DorySpecHi}{1.71}% same, upper end of range
+\newcommand{\DoryReqLo}{1.11}% request-duration improvement, lower end (Table 7)
+\newcommand{\DoryReqHi}{1.53}% request-duration improvement, upper end (Table 7)
+% Cited facts from CDB (arXiv 2608.09444, Appendix E.1): Ouro r=4 under three KV-cache layouts
+\newcommand{\CdbOuroFull}{78.09}% full per-loop cache
+\newcommand{\CdbOuroShared}{72.40}% first-then-shared cache
+\newcommand{\CdbOuroSingle}{0.23}% single-slot cache
+\newcommand{\GateAcc}{0.80}
+\newcommand{\GateSpeed}{1.2}
+\newcommand{\GateClass}{0.80}
+\newcommand{\SpecTokens}{256}
+\newcommand{\AneN}{60}
+\newcommand{\NgramPrompts}{10}
+\emergencystretch=2em
+\newcommand{\kk}[1]{$k{=}#1$}
+
+\title{How Many Loops? Per-Request Compute Allocation for a Looped LLM on a Laptop}
+\author{Srujan Pendurthi}
+\date{November 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Looped language models reuse one block of layers, so the loop count $k$ is a compute knob. We ask whether a per-request controller can set $k$ well for Dory1.0-4B served on an Apple M4 laptop with a pinned llama.cpp build. On GSM8K, MMLU-Pro and MBPP, holdout accuracy is flat in $k$: fixed $k{=}1,2,4$ score \HoldoutFixedOneAcc, \HoldoutFixedTwoAcc{} and \HoldoutFixedFourAcc. Per-item headroom is large: a per-prompt oracle reaches \HoldoutOracleAcc\ at mean $k$ \HoldoutOracleMeanK. Two learned routers, a text-feature policy and a hidden-state probe, capture none of it (change versus fixed $k{=}2$: \sg{\HoldoutTextDelta} and \sg{\HoldoutProbeDelta}; intervals include zero). A two-rule heuristic found after seeing the holdout split (fixed $k{=}1$, $k{=}2$ for code) ties fixed $k{=}2$ on the \FinalN-prompt final split at about \FloorLatencyRatio\ of its modeled latency; we label it post hoc. MMLU-Pro labels are confounded by output truncation; a 1024-token re-sweep cuts truncation and leaves $k{=}4$ at most slightly ahead of $k{=}1$. We reproduce the Dory authors' self-speculative decoding in llama.cpp (\SpecNFourSpeedup$\times$, identical outputs, below their reported \DorySpecLo--\DorySpecHi$\times$), and show that a sequential A/B on a shared laptop gave a spurious \SpecSequentialRatio$\times$ slowdown that interleaving removed. Numbers follow a grader correction; the final split was scored twice and both scorings are reported. We report a negative result with its protocol decisions.
+\end{abstract}
+
+\section{Introduction}
+Looped (recurrent-depth) language models run the same block of layers more than once \citep{huginn2025,ouro2025,dory2026}. If the loop count can be changed at inference time, a server can in principle spend little compute on easy prompts and more on hard ones. The question this paper asks is practical: for one open looped model on one laptop, is there a per-request rule for choosing $k$ that beats picking a single $k$ for everything?
+
+We study Dory1.0-4B \citep{dory2026,dorycard} through a pinned build of an open llama.cpp pull request \citep{llamacpp30306}, Q5\_K\_M weights, greedy decoding with thinking disabled, on an Apple M4 with \MemGb\,GB of memory. Our contributions are:
+\begin{itemize}
+\item \textbf{C1, flat accuracy with large per-item headroom.} Fixed $k$ does not change accuracy detectably, yet a per-prompt oracle, an upper bound that picks after seeing three runs, scores well above fixed $k{=}2$ at about the cost of fixed $k{=}1$; part of that gap is run-to-run noise and, on MMLU-Pro, truncation (Sections~\ref{sec:c1}, \ref{sec:trunc}).
+\item \textbf{C2, learned routers capture none of the headroom.} A text-feature policy and a hidden-state probe are indistinguishable from fixed $k{=}2$ (Section~\ref{sec:c2}).
+\item \textbf{C3 (post hoc), a two-rule heuristic.} Fixed $k{=}1$ plus a code floor matches fixed $k{=}2$ at a fraction of the latency. It was found after seeing the holdout split and is therefore a recommendation, not a validated result (Section~\ref{sec:c3}).
+\item \textbf{C4, a truncation confound.} A large share of MMLU-Pro answers hit the generation cap at every $k$, so MMLU-Pro labels partly measure whether an answer fits (Section~\ref{sec:trunc}).
+\item \textbf{C4b, do loops help once answers fit?} Re-running the MMLU-Pro holdout at a 1024-token cap lifts every $k$ by \MmluCapLiftMin--\MmluCapLiftMax\ points and cuts truncation from \MmluCapOneTruncSmallCap--\MmluCapTwoTruncSmallCap\ to \MmluCapOneTruncBigCap--\MmluCapTwoTruncBigCap\ of \MmluCapN\ items. With answers fitting, $k{=}4$ leads $k{=}1$ by \MmluCapFourWins\ wins to \MmluCapFourLosses\ losses (not significant) and $k{=}2$ ties $k{=}1$; the $k{=}2$ dip at 512 was largely truncation (Section~\ref{sec:c4b}).
+\item \textbf{C5, systems results on Apple silicon.} A llama.cpp reproduction of the Dory paper's self-speculative decoding (same checkpoint drafting at $k{=}1$) \citep{dory2026}, with our metadata-clone draft for llama.cpp; negative results for n-gram lookup, partial offload and a quantized KV cache that missed its pre-set accuracy gate (by a difference that is not significant); a Core~ML classifier on the Neural Engine (Section~\ref{sec:systems}).
+\item \textbf{C6, a measurement lesson.} Sequential A/B arms on a shared laptop gave a spurious slowdown that interleaved arms removed (Section~\ref{sec:measure}).
+\end{itemize}
+Every result number is generated by a script (\texttt{scripts/\allowbreak paper/\allowbreak numbers.py}) and inserted as a \LaTeX\ macro. Most come straight from the result files; a few values with no results file (the hidden-state probe row, the pre-regrade text-policy rows and threshold, and the n-gram ratio) are copied from the run log and marked in the source. Every protocol decision made along the way is listed in Appendix~\ref{app:rulings}.
+
+\section{Background}
+\paragraph{Looped language models.}
+Huginn scales test-time compute by unrolling a recurrent block a variable number of times \citep{huginn2025}. Ouro pretrains looped models with entropy-regularized depth allocation \citep{ouro2025}. Dory1.0-4B is a looped nGPT \citep{ngpt2024} whose recurrent block can run between one and four times \citep{dory2026}; the model card lists two loops as the default and describes a GGUF export \citep{dorycard}. In the build we use, Dory has \LayersIn\ input layers, \LayersRec\ recurrent layers and \LayersOut\ output layers (\LayersAll\ layer entries including MLPs), so $k$ changes the compute of the middle section only. Dory's authors also describe self-speculative decoding with the same checkpoint \citep[Sec.~6.2]{dory2026}; see below. Other serving work addresses depth-adaptive looped models in batched servers \citep{cdb2026}, and vLLM has Dory support through a merged pull request \citep{vllm60149}.
+
+\paragraph{Per-request versus per-token control.}
+Depth can be chosen per token (early exit, per-token recurrence) or per request. We study only the per-request case: one $k$ is chosen from the prompt, before generation, by routing the request to a server running that $k$. This keeps the KV cache and the llama.cpp runtime unchanged and makes the controller a small classifier over the prompt. Per-token control is a non-goal.
+
+\paragraph{Speculative decoding.}
+Speculative decoding drafts tokens cheaply and verifies them in one pass of the target, leaving the output distribution unchanged \citep{leviathan2023}. Self-speculative variants draft from the same model by skipping or exiting early \citep{draftverify2024,layerskip2024}. A looped model offers a natural draft in the same weights: the same block run fewer times. The Dory authors already use it, drafting $\gamma{=}4$ tokens at $k{=}1$ and verifying at $k{=}4$ with no separate draft model, and report \DorySpecLo--\DorySpecHi$\times$ the decode throughput of plain $k{=}4$ (their Fig.~6) and a request-duration improvement of \DoryReqLo--\DoryReqHi$\times$ (their Table~7) \citep[Sec.~6.2]{dory2026}. We test whether this carries over to llama.cpp on Apple silicon (Section~\ref{sec:systems}).
+
+\section{Setup}
+\label{sec:setup}
+\paragraph{Hardware and runtime.}
+All experiments ran on one Apple M4 laptop with \MemGb\,GB of unified memory, with the Metal backend. The runtime is llama.cpp at the head of the open pull request that adds Dory support \citep{llamacpp30306}, pinned to commit \LlamaRef. This PR was open at the time of writing and lists Metal as untested; our results are therefore for an unmerged build and a backend its authors have not yet validated. One \texttt{llama-server} process is run per loop count; $k$ is set through the GGUF metadata key \texttt{dory.num\_loops}.
+
+\paragraph{Weights and decoding.}
+We use the Q5\_K\_M GGUF release of the model. The card's benchmarks are for BF16 weights, and the card recommends temperature 1.0, top-p 0.95 and reasoning on \citep{dorycard}. We instead use greedy decoding with thinking disabled (the chat-template switch \texttt{enable\_thinking} set to false) so that every request is deterministic and cheap enough to sweep three loop counts. Our results therefore make no claim about BF16 weights or sampled decoding. The generation cap is \CapText\ tokens for GSM8K and MMLU-Pro and \CapCode\ for MBPP. The KV cache is f16. We keep Dory's default per-loop recurrent KV cache and did not test its last-loop mode, which shares one cache across loops; CDB report that they could not reproduce Ouro's near-lossless KV sharing (at four loops, scores of \CdbOuroFull, \CdbOuroShared\ and \CdbOuroSingle\ for full, first-then-shared and single-slot caches) \citep[App.~E.1]{cdb2026}, which is a reason to validate a shared cache before relying on it.
+
+\paragraph{Datasets and splits.}
+The benchmarks are GSM8K \citep{gsm8k2021}, MMLU-Pro \citep{mmlupro2024} and MBPP \citep{mbpp2021}. The splits are: a \emph{training} split of \TrainN\ prompts used to fit controllers; a \emph{holdout} split of \HoldoutN\ prompts (equal numbers per source) used for the controller gates and for model selection; and a \emph{final} split of \FinalN\ prompts used once for the headline test. Training labels were produced lazily: every item was run at $k{=}1$ and higher $k$ were run only for items wrong at $k{=}1$, so training cells at $k{=}2,4$ cover only those failures and are not comparable across $k$. Holdout and final labels use all three loop counts.
+
+\paragraph{Graders and the truncation rule.}
+Graders are rule-based: numeric answer extraction for GSM8K, option-letter extraction for MMLU-Pro, and running the reference tests for MBPP. After the main runs we found that some truncated outputs had been graded correct through the grader's fallback extraction (the last number in a GSM8K output, or a bare letter on the last line of an MMLU-Pro output). The grader was then made \emph{truncation-aware}: an output that reaches the generation cap no longer gets the fallback and counts only if it states an explicit answer. Every split was regraded from the stored outputs (\texttt{scripts/regrade.py}); MBPP was skipped. On the sweeps this flipped a few items from correct to incorrect, and the labels were rebuilt. The main numbers in this paper are the post-regrade ones. The final split had already been evaluated once before the regrade, so it was scored twice; the pre-regrade values are listed in Section~\ref{sec:protocol}.
+
+\paragraph{Modeled latency.}
+Wall time on a shared laptop is noisy, so controller comparisons use \emph{modeled seconds}: for a request with $n_p$ prompt tokens and $n_g$ generated tokens at loop count $k$, modeled time is $n_p/\mathrm{pp}_k+n_g/\mathrm{tg}_k$, where $\mathrm{pp}_k$ and $\mathrm{tg}_k$ are single-stream prompt and generation speeds measured once per $k$ (\texttt{results/speed.json}). This ranks policies by the compute they request, not by transient load. For the text policy we add the measured live classifier overhead (\TextOverheadMs\,ms per request, \texttt{results/live\_gate.json}); fixed-$k$, code-floor and oracle rows carry no controller cost, and the probe row is charged its extra prompt pass.
+
+\paragraph{Statistics.}
+Accuracy differences are paired between policies on the same prompts and carry 95\% paired-bootstrap intervals. With a few hundred prompts the intervals are wide, up to plus or minus \HoldoutCiHalf\ on the holdout split and \FinalCiHalf\ on the final split; claims below are worded against them.
+
+\section{Controllers and protocol}
+\label{sec:protocol}
+\paragraph{Labels.}
+For each prompt the label is the smallest $k\in\{1,2,4\}$ at which the answer is graded correct, or \emph{none} if all three fail. Labels are monotone-by-construction but the underlying correctness need not be: some prompts are correct at $k{=}2$ and wrong at $k{=}4$ (\HoldoutNonMonoRate\ of holdout prompts are correct at some $k$ but wrong at a larger one), a sign that correctness varies between runs for reasons other than depth. An oracle that picks the best of three such runs is therefore optimistic.
+
+\paragraph{Oracle.}
+The per-prompt oracle picks the smallest correct $k$ (and $k{=}1$ when none is correct). It is an upper bound on routing by selection over three runs and ignores the cost of choosing.
+
+\paragraph{Text policy.}
+A multinomial logistic regression (class-balanced, standardized features, cross-validated regularization) over outputs of the NVIDIA prompt task and complexity classifier \citep{nvclassifier}, plus prompt length and an is-code flag. Given class probabilities it picks the smallest $k$ whose cumulative probability reaches a threshold $\tau$; $\tau$ is set from predictions alone so that the mean $k$ on the holdout split equals \kk{2}. This matches the cost of the fixed-$k{=}2$ baseline and tests whether the policy allocates loops better than a constant. Code prompts get at least $k{=}2$.
+
+\paragraph{Hidden-state probe.}
+The same classifier over the last-token final-layer embedding from a $k{=}1$ server (normalized), at matched mean $k$ of two, with the modeled cost of the extra prompt pass charged.
+
+\paragraph{Gates fixed before results.}
+The plan fixed the following before any controller result was seen. The text policy passes if its accuracy gain over fixed $k{=}2$ on holdout is at least \GateGain, or its interval contains zero and it is at least \GateCheap\ cheaper. The probe replaces the text policy only if it beats it by at least \GateProbeGain\ at matched cost (the plan specified mean modeled seconds; we compared at matched mean $k$). If the text policy failed, the chosen policy would be fixed $k{=}2$ with a code floor. The final split was to be run once, with the policy fixed beforehand; the regrade rerun described next departs from this in one respect, the refit of the text policy.
+
+\paragraph{The final split was evaluated twice.}
+The final test was run once under the pre-regrade grader, and again after the truncation-aware regrade (Ruling AJ: a grader correction applied identically to all splits is not tuning). Pre-regrade the final split gave fixed $k{=}1,2,4$ = \FinalPreFixedOneAcc, \FinalPreFixedTwoAcc, \FinalPreFixedFourAcc, the chosen policy \FinalPreChosenAcc, text \FinalPreTextAcc\ (\sg{\FinalPreTextDelta}\ vs fixed 2) and the oracle \FinalPreOracleAcc. Pre-regrade holdout fixed $k{=}1,2,4$ were \HoldoutPreFixedOneAcc, \HoldoutPreFixedTwoAcc, \HoldoutPreFixedFourAcc\ and the oracle \HoldoutPreOracleAcc; the text-policy change was \sg{\HoldoutTextPreDelta}\ [\sg{\HoldoutTextPreLo}, \sg{\HoldoutTextPreHi}]. For the rerun the text policy was refit on the regraded training labels (its threshold moved from \FinalPreTextTau\ to \FinalTextTau), so the post-regrade text rows, on holdout and final, come from a refit model; the fixed, code-floor and oracle rows involve no fitting. The regrade moved headline numbers by a few items and no conclusion changed (the holdout text-policy point estimate changed sign, from \sg{\HoldoutTextPreDelta} to \sg{\HoldoutTextDelta}; both intervals include zero). Both versions are recorded in \texttt{results/decisions.md}.
+
+\section{Results}
+\subsection{C1: flat fixed-\texorpdfstring{$k$}{k} accuracy, large headroom}
+\label{sec:c1}
+Figure~\ref{fig:pareto} and Table~\ref{tab:holdout} show the holdout results. Fixed $k{=}1,2,4$ score \HoldoutFixedOneAcc, \HoldoutFixedTwoAcc{} and \HoldoutFixedFourAcc, at \HoldoutFixedOneSec, \HoldoutFixedTwoSec\ and \HoldoutFixedFourSec\ modeled seconds. Relative to $k{=}2$ the differences are \sg{\HoldoutFixedOneDelta}\ [\sg{\HoldoutFixedOneLo}, \sg{\HoldoutFixedOneHi}] for $k{=}1$ and \sg{\HoldoutFixedFourDelta}\ [\sg{\HoldoutFixedFourLo}, \sg{\HoldoutFixedFourHi}] for $k{=}4$: no detectable effect of $k$ on accuracy, while cost scales roughly linearly with $k$.
+
+Yet the oracle reaches \HoldoutOracleAcc\ (\sg{\HoldoutOracleDelta}\ [\sg{\HoldoutOracleLo}, \sg{\HoldoutOracleHi}] vs fixed 2) at a mean $k$ of \HoldoutOracleMeanK\ and \HoldoutOracleSec\ modeled seconds. That is a little more than fixed $k{=}1$ (\HoldoutFixedOneSec\,s) and far less than fixed $k{=}2$ (\HoldoutFixedTwoSec\,s). Figure~\ref{fig:headroom} decomposes it: \HoldoutOracleAlready\ of holdout prompts are already right at $k{=}1$, \HoldoutOracleRescued\ (\HoldoutOracleRescuedN\ prompts) are rescued by $k{=}2$ or $k{=}4$, and \HoldoutOracleNever\ are wrong at every $k$. The final split (Table~\ref{tab:final}) shows the same shape: oracle \FinalOracleAcc\ (\sg{\FinalOracleDelta}\ [\sg{\FinalOracleLo}, \sg{\FinalOracleHi}]) at \FinalOracleSec\ s, against \FinalFixedTwoSec\ s for fixed $k{=}2$. Per-source numbers are in Table~\ref{tab:persource}. MMLU-Pro labels are affected by output truncation (Section~\ref{sec:trunc}), so its share of the headroom should be read with that caveat.
+
+\paragraph{Caveat.} The oracle takes the best of three correlated greedy runs of related models. Part of the headroom is that a different $k$ perturbs a borderline answer, not that a prompt \emph{needs} more or fewer loops. Headroom is an upper bound on what any router could capture, and the next subsection shows none is captured.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/fig_pareto.pdf}
+\caption{Accuracy against mean modeled seconds per prompt, holdout (left) and final test (right). Fixed $k$ is flat in accuracy while cost grows with $k$. The per-prompt oracle sits well above every fixed-$k$ point at a cost close to $k{=}1$. The probe was evaluated on holdout only. The ``fixed 1 + code floor'' point is post hoc (C3). MMLU-Pro labels are truncation-affected (Section~\ref{sec:trunc}). The $y$-axis is shared across panels.}
+\label{fig:pareto}
+\end{figure}
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/fig_headroom.pdf}
+\caption{Oracle decomposition by source, holdout (left) and final (right): share of prompts already correct at $k{=}1$, correct only at $k{=}2$ or $4$ (rescued), and wrong at every $k$. Segment labels are drawn only for segments at least \LabelThresh\ wide. MMLU-Pro's wrong-at-every-$k$ share is largely truncated outputs (Section~\ref{sec:trunc}).}
+\label{fig:headroom}
+\end{figure}
+
+\subsection{C2: learned routers capture none of it}
+\label{sec:c2}
+On holdout the text policy scores \HoldoutTextAcc\ at mean $k$ \HoldoutTextMeanK, \sg{\HoldoutTextDelta}\ versus fixed $k{=}2$ [\sg{\HoldoutTextLo}, \sg{\HoldoutTextHi}]. It fails its gate. The hidden-state probe scores \HoldoutProbeAcc\ at matched $k$, \sg{\HoldoutProbeDelta}\ [\sg{\HoldoutProbeLo}, \sg{\HoldoutProbeHi}], and is not promoted. On the final split (Table~\ref{tab:final}) the text policy scores \FinalTextAcc\ against \FinalChosenAcc\ for the chosen policy, \sg{\FinalTextDelta}\ [\sg{\FinalTextLo}, \sg{\FinalTextHi}] versus fixed $k{=}2$: noise. The conclusion is that, with these features, neither prompt text nor the $k{=}1$ last-token state predicts which prompts benefit from more loops, at the sample sizes here. We cannot rule out smaller gains or better features: the holdout intervals reach plus or minus \HoldoutCiHalf and the training labels are noisy (Section~\ref{sec:trunc}) and heavily skewed to $k{=}1$ (the class-balance gate failed; Ruling Z).
+
+\subsection{C3 (post hoc): fixed \texorpdfstring{$k{=}1$}{k=1} plus a code floor}
+\label{sec:c3}
+After the holdout results were seen we compared the heuristic ``$k{=}1$ except $k{=}2$ for code prompts''. It scores \HoldoutFloorAcc\ at \HoldoutFloorSec\ s on holdout (mean $k$ \HoldoutFloorMeanK; \sg{\HoldoutFloorDelta}\ vs fixed 2 [\sg{\HoldoutFloorLo}, \sg{\HoldoutFloorHi}]) and \FinalFloorAcc\ at \FinalFloorSec\ s on final, against \FinalFixedTwoAcc\ at \FinalFixedTwoSec\ s for fixed $k{=}2$: equal accuracy at \FloorLatencyRatio\ of the modeled latency. The code floor uses the MBPP source label, which matches the classifier's code flag on every holdout and final prompt. This is \textbf{post hoc}. The heuristic was chosen after looking at the holdout split, so the holdout number is not a clean estimate, and the final result is a single comparison on \FinalN\ prompts whose interval, \sg{\FinalFloorLo} to \sg{\FinalFloorHi}, is wide. The plan's pre-specified fallback was fixed $k{=}2$ with a code floor and that stayed the chosen policy (Ruling AB); the heuristic is reported as a comparison and a recommendation. The simplest reading of C1 and C3 together is that most of the benefit of loops is already available at $k{=}1$, and we make no stronger claim.
+
+\begin{table}[t]
+\centering\small
+\input{generated/tab_controllers_holdout.tex}
+\caption{Holdout (post-regrade), policies against fixed $k{=}2$. Modeled seconds as defined in Section~\ref{sec:setup}. The ``code floor'' rows are post hoc (C3).}
+\label{tab:holdout}
+\end{table}
+
+\section{The truncation confound (C4)}
+\label{sec:trunc}
+A large share of MMLU-Pro outputs reach the generation cap. On holdout the truncated share is \HoldoutMmluKOneTruncRate, \HoldoutMmluKTwoTruncRate\ and \HoldoutMmluKFourTruncRate\ at $k{=}1,2,4$, against \HoldoutGsmKOneTruncRate, \HoldoutGsmKTwoTruncRate, \HoldoutGsmKFourTruncRate\ for GSM8K and \HoldoutMbppKOneTruncRate\ at every $k$ for MBPP (Figure~\ref{fig:trunc}, Table~\ref{tab:trunc}). A truncated output rarely contains an explicit final answer and is almost never graded correct (\HoldoutMmluTruncCorrect\ of \HoldoutMmluTruncTotal\ truncated MMLU-Pro outputs across the three $k$ were graded correct), so an MMLU-Pro label of ``wrong at $k{=}1$, right at $k{=}2$'' can mean only that the answer fit under the cap at $k{=}2$. Among \emph{non-truncated} MMLU-Pro outputs, accuracy is \HoldoutMmluKOneAccNT, \HoldoutMmluKTwoAccNT\ and \HoldoutMmluKFourAccNT\ at $k{=}1,2,4$ (all-item accuracy is in Table~\ref{tab:persource}), but these are \emph{conditional} on fitting, and the set of items that fit changes with $k$, so the three figures are not a like-for-like comparison and we do not interpret their trend as a loop effect.
+
+This limits both C1 and C2, but unevenly. MMLU-Pro is a third of the holdout and final prompts and \TrainMmluKOneN\ of the \TrainN\ training prompts. In training, \TrainMmluRescuedTruncOne\ of the \TrainMmluRescued\ MMLU-Pro labels that favour more loops come from answers truncated at $k{=}1$, so a router trained on them is partly learning to predict length. On holdout, most never-correct MMLU-Pro items were truncated at some $k$ (\HoldoutMmluNoneTrunc\ of \HoldoutMmluNone), and whether a larger cap fixes them is the subject of Section~\ref{sec:c4b}; only \HoldoutMmluRescuedTruncOne\ of the \HoldoutMmluRescued\ MMLU-Pro oracle rescues were truncated at $k{=}1$, so the holdout oracle gain does not depend mainly on truncated answers. Our main sweeps used the 512-token cap (Ruling AF); the final split's one-shot evaluation was already spent. Section~\ref{sec:c4b} reports the re-sweep we then ran for the MMLU-Pro holdout.
+
+\subsection{Do loops help once answers fit? (C4b)}
+\label{sec:c4b}
+To separate loop effects from truncation we re-ran the \MmluCapN\ MMLU-Pro holdout items at $k{=}1,2,4$ with the cap raised to 1024 tokens (f16 cache, otherwise unchanged; Table~\ref{tab:cap}). This is an analysis of label sensitivity only: the controller and every reported controller result stay on the 512-cap labels and were not refit (Ruling P11).
+
+Raising the cap lifts accuracy at every $k$, by \MmluCapLiftMin\ to \MmluCapLiftMax\ points, and cuts truncation by a third to a half, but \MmluCapOneTruncBigCap--\MmluCapTwoTruncBigCap\ of \MmluCapN\ outputs still hit the cap (\MmluCapSharedTrunc\ items are truncated at all three $k$). At 1024, accuracy is \MmluCapOneAccBigCap, \MmluCapTwoAccBigCap\ and \MmluCapFourAccBigCap\ at $k{=}1,2,4$. Fixed $k{=}4$ leads $k{=}1$ by \MmluCapFourLead\ (\MmluCapFourWins\ items better, \MmluCapFourLosses\ worse; exact sign test $p{=}\MmluCapFourMcNemarP$, not significant at $n{=}\MmluCapN$), and $k{=}2$ ties $k{=}1$ (\MmluCapTwoWins\ and \MmluCapTwoLosses; $p{=}\MmluCapTwoMcNemarP$). So the $k{=}2$ dip seen at 512 was largely truncation, and loops give at most a small, unproven MMLU-Pro gain; residual truncation and the small sample leave the question open.
+
+\begin{table}[t]
+\centering
+\small
+\input{generated/tab_mmlu1024.tex}
+\caption{MMLU-Pro holdout ($n{=}\MmluCapN$): correct and truncated item counts at the 512- and 1024-token caps, and items wrong and truncated at 512 that are right at 1024.}
+\label{tab:cap}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/fig_truncation.pdf}
+\caption{Holdout only. Left: share of outputs truncated at the generation cap. Right: accuracy among non-truncated outputs. Training cells are omitted because lazy labelling makes their $k{=}2,4$ items a failure-selected subset.}
+\label{fig:trunc}
+\end{figure}
+
+\section{Systems on Apple silicon (C5)}
+\label{sec:systems}
+\paragraph{Self-speculative decoding from a same-weights draft.}
+Self-speculative decoding with the same checkpoint is the Dory authors' design: a $k{=}1$ draft proposes $\gamma{=}4$ tokens and $k{=}4$ verifies them \citep[Sec.~6.2]{dory2026}. We reproduce it on Apple silicon; we do not introduce it. Our engineering contribution is running it in llama.cpp, which supports a separate draft model but copies the target's metadata overrides into the draft. The draft therefore needs its own file: we clone the stock GGUF (an APFS copy-on-write clone, so no extra disk) and set \texttt{dory.num\_loops=1}, while the target is the stock GGUF with metadata $k{=}4$ (Ruling AH). The server must be started with \texttt{-{}-spec-type draft-simple}; the default does nothing (Ruling AI). In an interleaved A/B (Section~\ref{sec:measure}) over \SpecPrompts\ holdout prompts, a draft length of four tokens gives a geometric-mean speedup of \SpecNFourSpeedup$\times$ over plain $k{=}4$ decoding (95\% CI \SpecNFourLo--\SpecNFourHi; faster on \SpecNFourFaster\ of \SpecPrompts\ prompts), with draft acceptance \SpecNFourAccept\ and outputs identical to plain decoding on \SpecNFourIdentical\ of \SpecPrompts. This is below the \DorySpecLo--\DorySpecHi$\times$ decode throughput the Dory authors report for the same design (we did not measure the request-duration improvement of \DoryReqLo--\DoryReqHi$\times$ they also report). Our setting differs in several ways that may account for the gap, which we did not test: hardware (M4, Metal), runtime (an unmerged llama.cpp build), quantization (Q5\_K\_M), generation length (\SpecTokens\ tokens) and, one plausible factor, cache layout: here the draft runs as a separate model with its own KV cache, whereas their drafter shares the target's input-block and first-loop caches. A draft length of six gives \SpecNSixSpeedup$\times$ (\SpecNSixLo--\SpecNSixHi) but lower acceptance, \SpecNSixAccept. The intervals overlap; we kept four because six did not meet the pre-set acceptance bar (Ruling AN). A per-prompt best-draft-length oracle computed from the sequential sweep, whose throughput is load-confounded, suggested a ceiling of a few percent, so we did not patch llama.cpp for confidence-driven draft lengths (Ruling AM). In the same sequential sweep a $k{=}2$ draft and a CPU draft were much slower than the $k{=}1$ draft, the CPU draft by far more than load drift could explain; we did not re-measure them interleaved. Speedups are only relevant when a request is routed to $k{=}4$; the chosen policy never starts a $k{=}4$ server, so this result is independent of the controller.
+
+\paragraph{Negative results.}
+Figure~\ref{fig:spec} summarizes the sweep and the interleaved comparison, and Table~\ref{tab:systems} lists all systems results. In an early benchmark at $k{=}2$ (\NgramPrompts\ MBPP prompts with the reference solution as context; arms run one after the other, ratio of total throughput), n-gram drafting (\texttt{ngram-simple}) accepted few drafts and ran at \NgramSpeedup$\times$ plain speed; given Section~\ref{sec:measure}, treat this as indicative. Running \LayersGpu\ of \LayersAll\ layers on the GPU and the rest on the CPU ran at \OffloadSpeedup$\times$ plain speed (\OffloadN\ prompts, interleaved; 95\% CI \OffloadLo--\OffloadHi) with the same graded accuracy; full GPU offload stays. A q8\_0 KV cache at $k{=}4$ on \QEightN\ holdout GSM8K and MMLU-Pro prompts scored \QEightAcc\ against \QSixteenAcc\ for f16 (change \sg{\QEightDelta}; the net difference is entirely GSM8K, \QEightGsmSixteen\ items correct with f16 against \QEightGsmEight\ with q8\_0; MMLU-Pro totals are equal, \QEightMmluSixteen\ against \QEightMmluEight, but items flipped both ways, \QEightMmluGainedByEight\ each way; McNemar $p{=}\QEightMcNemarP$, so not evidence of harm), failing the pre-set \GateKv\ gate, so f16 stays (q8\_0 would save about \KvSavingGb\,GB of resident memory for a $k{=}4$ server, from \texttt{results/bench.csv}, if memory were short).
+
+\paragraph{Controller overhead and the Neural Engine.}
+Running the NVIDIA classifier in PyTorch on the GPU takes about \MpsMs\,ms per request (\CpuMs\,ms on CPU). Converting it to Core~ML for the Neural Engine takes \AneMs\,ms, \AneSpeedup$\times$ faster, with identical argmax on every head over \AneN\ holdout prompts (fp16; other Core~ML compute units returned NaN logits and are unusable as converted). In the live router the text policy added \TextOverheadMs\,ms and the chosen policy \LiveOverheadMs\,ms per request on \LiveGateN\ holdout prompts, with zero accuracy disagreement against the offline run, and the router serializes classifier calls with a lock. The Core~ML path was not wired into the router: it saves a negligible fraction of a request's latency and costs more memory and a crash-prone dependency (Ruling AO).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/fig_spec.pdf}
+\caption{Self-speculative decoding. Left: draft acceptance from the draft-length sweep. The sweep ran its configurations sequentially, so its throughput is load-confounded and only acceptance is shown. $n_{\max}=8$ with ``(p07)'' is \texttt{-{}-spec-draft-n-max 8 -{}-spec-draft-p-min 0.7}; its acceptance is not comparable with the others because the probability threshold makes it draft fewer tokens. Right: per-prompt speed relative to plain decoding from the interleaved A/B; horizontal lines mark geometric means. The horizontal line at \SpecSequentialRatio$\times$ is the sequential-arm artifact discussed in Section~\ref{sec:measure}.}
+\label{fig:spec}
+\end{figure}
+
+\section{Measuring on a shared laptop (C6)}
+\label{sec:measure}
+Our first speculative benchmark ran the speculative and plain arms one after the other. It gave acceptance \SpecSequentialAccept\ and identical outputs but a speed of \SpecSequentialRatio$\times$ plain: apparently a large slowdown. The arms had run hours apart; Ruling AK treated the result as an artifact and deferred the speed verdict to a back-to-back measurement, and the interleaved A/B below did not reproduce it. The draft-length sweep, also sequential, then showed that a clean sequential plain re-run was faster than every speculative arm, which is implausible with acceptance above \GateAcc\ and identical outputs and was contradicted by the interleaved A/B, and plain rows written while we ran diagnostics were contaminated and discarded (Ruling AL). We attribute the drift to uncontrolled background load on a shared laptop; we did not isolate its source.
+
+The fix is to interleave: all servers are up, and for each prompt the arms run back to back with their order rotated, so slow periods hit every arm. Speed is then a per-prompt ratio, summarized by its geometric mean with a bootstrap interval. That gave \SpecNFourSpeedup$\times$ for the $n{=}4$ draft. A four-server variant crashed Metal with a compute error, so the final A/B ran with three servers up. The lesson is general: on a shared machine, sequential A/B measures the machine's drift as much as the treatment, and the ratio can land far outside the plausible range with identical outputs and sensible acceptance.
+
+\section{Limitations}
+\begin{itemize}
+\item One machine (Apple M4, \MemGb\,GB), one model (Dory1.0-4B), one quantization (Q5\_K\_M), one backend (Metal) that the PR's authors list as untested, and a pinned build of an unmerged PR.
+\item Greedy decoding with thinking disabled. The card recommends temperature 1.0, top-p 0.95 and reasoning on, and its benchmarks use BF16 weights; our accuracy levels are not comparable to the card's and the null result might not transfer to sampled or reasoning-mode decoding.
+\item Small evaluation sets (\HoldoutN\ holdout, \FinalN\ final) with paired intervals up to plus or minus \HoldoutCiHalf\ (holdout) and \FinalCiHalf\ (final); smaller effects are below resolution.
+\item MMLU-Pro labels are truncation-bound (C4). A 1024-token re-sweep of the holdout (C4b) still leaves about \MmluCapFourTruncBigCap\% of outputs truncated; the labels and controller were built on 512-cap labels and not refit.
+\item The grader was changed after the main runs and the final split was evaluated twice. The change was applied identically to all splits and both versions are reported, but a reader should note that it happened. For the rerun the text policy was also refit on the regraded training labels (threshold \FinalPreTextTau\ to \FinalTextTau), so the post-regrade text rows are not from the policy first evaluated on the final split.
+\item C3 was found after seeing the holdout split. The oracle is optimistic because it selects among noisy runs.
+\item Modeled seconds rank policies by requested compute and ignore queueing, batching and load. The speculative speedup is measured on \SpecPrompts\ prompts with \SpecTokens\ generated tokens. Only $k{=}4$ is sped up; the chosen policy does not use it.
+\item We ran Dory's default per-loop KV cache and did not test its last-loop mode; CDB's failure to reproduce Ouro's shared-KV result \citep[App.~E.1]{cdb2026} is a reason to test it before relying on it.
+\item Only features available before generation were tried. We did not try per-token control, fine-tuning for routing, or mid-layer probes.
+\end{itemize}
+
+\section{Related work}
+Looped and recurrent-depth models include Huginn \citep{huginn2025}, Ouro \citep{ouro2025} and Dory \citep{dory2026}; Ouro trains a learned depth-allocation objective, whereas we study per-request control of a model whose loop count is a serving-time setting. CDB addresses batching of depth-adaptive looped models and reports that it could not reproduce Ouro's near-lossless KV sharing \citep{cdb2026}. Self-speculative decoding drafts from the same model by skipping layers or exiting early \citep{draftverify2024,layerskip2024}, building on speculative decoding \citep{leviathan2023}; the Dory authors already use the same checkpoint at $k{=}1$ as a draft for $k{=}4$ \citep[Sec.~6.2]{dory2026}; our contribution is running it in llama.cpp through a GGUF metadata clone, where draft and target do not share KV caches. The router's text features come from a public prompt-task classifier \citep{nvclassifier}. Laya is a related typed-decision model with a self-reported forward time of about \LayaMs\,ms on a T4 and is not generative \citep{laya}; we mention it only as a latency reference point for small decision models. Support for Dory in vLLM has been merged \citep{vllm60149}; we did not test it.
+
+\section{Conclusion}
+For Dory1.0-4B on a laptop, with greedy decoding and a truncation-aware grader, fixed loop count barely changes accuracy while modeled cost grows with $k$ (\HoldoutFixedOneSec, \HoldoutFixedTwoSec\ and \HoldoutFixedFourSec\,s at $k{=}1,2,4$). Per-prompt headroom exists on paper, but neither prompt-text features nor a hidden-state probe capture it, and a cheap two-rule heuristic found after the fact matched fixed $k{=}2$'s accuracy on the \FinalN-prompt final split (95\% CI \sg{\FinalFloorLo} to \sg{\FinalFloorHi}) at about \FloorLatencyRatio\ of the latency, which we report as post hoc. A truncation confound limits what the MMLU-Pro labels can say. On the systems side, the Dory authors' same-weights $k{=}1$ draft \citep{dory2026}, reproduced in llama.cpp, gives \SpecNFourSpeedup$\times$ with identical outputs, partial CPU offload (interleaved) and n-gram drafting (an early, indicative sequential measurement) were slower, and interleaved measurement is necessary on a shared laptop. Code, results and generation scripts are available from the author on request.% TODO(author): replace with public repo URL before submission
+
+\section*{Use of AI tools}
+% TODO(author): confirm wording
+The experiment code, analysis scripts and manuscript drafts were produced with substantial assistance from AI coding agents (Anthropic Claude models in Claude Code), working under the author's direction; protocol decisions made during execution are listed in Appendix~\ref{app:rulings}. The author designed the study, reviewed the results and is responsible for all content.
+
+\bibliographystyle{plainnat}
+\bibliography{refs}
+
+\appendix
+\section{Protocol rulings}
+\label{app:rulings}
+Decisions made while running the study that affect the science or the measurements, with their rationale. Process-only decisions are omitted here; the full record, including them and the paper-process rulings P1--P11, is in \texttt{paper/rulings.md}, with the same letters. Gate results are in \texttt{results/decisions.md}.
+\begin{description}\small\setlength{\itemsep}{2pt}
+\item[B] The loop counts $\{1,2,4\}$ and the code floor of two are defined once and shared by the labelling and the policies.
+\item[J] The grading rules are robust to formatting (code-fence variants, a prose-letter fallback and missing-boundary handling for MMLU-Pro, and for GSM8K an explicit ``answer is $N$'' preferred over the last number), because the aim is uncorrupted labels. If wrong, the graders are slightly stricter than first specified.
+\item[L] Markdown-formatted MMLU-Pro answers (for example a bold ``Answer: C'') were being graded incorrect, which corrupts labels, so the grader was fixed.
+\item[M] The answer-prefix pattern was tightened after review because it removed a real false positive.
+\item[P] Transient server errors are retried. An error row counts as finished only if it carries a grade or an HTTP 4xx, and downstream code uses the last clean row per item, loop count and variant.
+\item[Q] The four-server memory gate is measured as the system-wide memory delta plus swap growth of at most one GB, not summed process memory, because memory-mapped weights are shared between servers. The risk is leniency if Metal buffers are not shared; the swap check guards it.
+\item[R] Raw prompt text, without a ``Prompt:'' prefix, is fed to the classifier. The model card's code example prepends it, but our logistic regression is trained and served on the same featurization, so a consistent shift is learned away; the cost if wrong is slightly noisier complexity features.
+\item[S] Speculative decoding was initially left out because llama.cpp copies the target's metadata overrides into the draft, so a draft with a different loop count seemed impossible; this was reversed later (AH).
+\item[T] The default generation cap is \CapText\ tokens, with \CapCode\ for MBPP, which needs longer outputs and would otherwise have corrupted the live accuracy check; the loop-count list passed to the router was also checked for mismatches.
+\item[U] Each sweep is re-run, for up to two extra passes, until no transient-error rows remain before labels are built, which avoids zero-token latencies and upward-biased labels.
+\item[V] The f16 KV cache was chosen and the q8\_0 accuracy check initially skipped: memory was not tight and q8\_0 was speed-neutral. The check was run later (Section~\ref{sec:systems}) and f16 stayed.
+\item[Y] A tie counts as passing a gate stated as at least. Because the fixed-$k$ curve is flat, any gain must come from per-item disagreement, and a null result would itself be a valid result.
+\item[Z] Work continued past the failed class-balance gate (every class share at most \GateClass; the $k{=}1$ share was larger). The plan said to stop and report; we continued under the author's standing decision to complete the protocol, because the fit is already class-weighted, the remaining runs were cheap, and the gate against fixed $k{=}2$ measures real benefit. A negative result there is the answer.
+\item[AB] The pre-specified fallback (fixed $k{=}2$) is kept as the chosen policy even though fixed $k{=}1$ with a code floor scored slightly higher on holdout (within noise) and was cheaper; the latter is reported on final as a comparison only. Choosing the fallback after looking at holdout would be selection, and the plan fixes the fallback in advance. This is why C3 is post hoc.
+\item[AD] The router holds a lock around the text-feature computation, because a live test with four threads hit a Metal assertion in the GPU classifier (not thread-safe).
+\item[AE] [Router overhead] The overhead failure is accepted and not fixed: the text policy is not deployed, and its overhead of tens of milliseconds is about a third of a percent of a typical request of about twenty seconds.
+\item[AF] [MMLU-Pro cap] No re-sweep with a larger cap was done: it needs about six or more GPU hours and the final split's one-shot evaluation was already spent. Follow-up work was limited to documentation (the truncation caveat and a per-source breakdown). Later superseded for the holdout only: a 1024-token MMLU-Pro holdout re-sweep was run after the weight-space work freed the GPU (Section~\ref{sec:c4b}, Ruling P11).
+\item[AG] Known small issues were left: the chosen policy still runs the classifier (for the code flag), the memory check did not cover the learned-policy three-server router, and the grader has last-number and last-line false positives of about half a point. None changes the headline. Later, the truncation-aware regrade addressed the grader item for GSM8K and MMLU-Pro (MBPP is skipped).
+\item[AH] The draft model is an APFS clone of the stock GGUF with \texttt{dory.num\_loops=1}; the target is the stock GGUF (metadata $k{=}4$) with no override, because llama-server copies the target's metadata overrides into the draft's parameters. If wrong, speedups would be mismeasured; an output-identity check guards this.
+\item[AI] \texttt{-{}-spec-type draft-simple} is required; the default type is none, under which the draft loads but never drafts.
+\item[AJ] Re-running the final test after a grader correction is allowed: the one-shot rule guards against tuning on the final split, and a fix applied identically to all splits is not tuning. If wrong, the headline shifts by \AJItems\ items; both versions are recorded.
+\item[AK] The \SpecSequentialRatio$\times$ result is a measurement artifact: the speculative and plain arms ran hours apart, likely under external GPU load. The speed verdict was deferred to back-to-back measurement.
+\item[AL] Plain-decoding rows in the draft sweep that were written while diagnostics were running are contaminated; they were deleted and re-run after the sweep.
+\item[AM] The draft length stays at four: a confidence-driven length would need a llama.cpp patch and its ceiling, computed from the load-confounded sequential sweep, is a few percent, within run noise. If wrong, the cost is a few percent of speculative throughput.
+\item[AN] The speculative gate (acceptance at least \GateAcc, speedup at least \GateSpeed$\times$, identical outputs) passes with a draft length of four. Six drafts fail the acceptance bar and the intervals overlap, so four is kept; the cost if wrong is a few percent of $k{=}4$ speed.
+\item[AO] The Core~ML classifier is not wired into the router: it saves a few tens of milliseconds per request, a tiny fraction of a typical request, at the cost of about a gigabyte more memory and a dependency that segfaults. If wrong, the cost is that per-request saving.
+\end{description}
+
+\section{Full tables}
+\begin{table}[h]
+\centering\small
+\input{generated/tab_controllers_final.tex}
+\caption{Final split ($n{=}\FinalN$, post-regrade). The code-floor row is post hoc (C3); the text row is a reference and not a deployed policy; it comes from the policy refit on regraded training labels.}
+\label{tab:final}
+\end{table}
+\begin{table}[h]
+\centering\scriptsize
+\resizebox{\linewidth}{!}{\input{generated/tab_per_source.tex}}
+\caption{Holdout accuracy and mean modeled seconds by source. The code-floor columns are post hoc (C3); MMLU-Pro accuracies are affected by truncation (Section~\ref{sec:trunc}).}
+\label{tab:persource}
+\end{table}
+\begin{table}[h]
+\centering\small
+\input{generated/tab_truncation.tex}
+\caption{Truncation by split, source and $k$. Training rows at $k{=}2,4$ cover only items that failed at $k{=}1$ (lazy labelling) and are not comparable across $k$.}
+\label{tab:trunc}
+\end{table}
+\begin{table}[h]
+\centering\small
+\input{generated/tab_systems.tex}
+\caption{Systems results. Speed ratios for speculative decoding are per-prompt geometric means from the interleaved A/B; the sequential row is an artifact. The offload ratio is an interleaved per-prompt geometric mean over \OffloadN\ prompts; the n-gram ratio is total throughput from a sequential run on \NgramPrompts\ prompts at $k{=}2$ and is indicative only.}
+\label{tab:systems}
+\end{table}
+\end{document}
