@@ -1,0 +1,10 @@
+{
+ "sha256": "fe805edfc0cc4801bca51f68ea8d46d3b7293b474cf981ff9a985677402e52ab",
+ "gguf": "/Users/srujanpendurthi/Projects/Current/doryAgent/results/wsp/models/e006_ctrl.gguf",
+ "max_tokens": {
+  "gsm8k": 512,
+  "mmlu_pro": 512,
+  "mbpp": 768,
+  "arc": 512
+ }
+}

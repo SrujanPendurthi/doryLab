@@ -1,0 +1,378 @@
+[
+ {
+  "id": "gsm8k:train:3835",
+  "source": "gsm8k",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "litter: $8 \\times 6 = 48$ pups.\n    3. Total mice after first litter: $8 + 48 = 56$.\n    4. Second litter: $56 \\times 6 = 336$ pups.\n    5. Eating: Each of the 56 adults eats 2 pups.\n    6. Pups eaten: $56 \\times 2 = 112$.\n    7. Pups remaining: $336 - 112 = 224$.\n    8. Total mice left: $56$ (adult"
+ },
+ {
+  "id": "gsm8k:train:4508",
+  "source": "gsm8k",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "ave:\n$D = 200$\n\n**Step 5: Verify the result**\nInitial dislikes: 200\nInitial likes: 200\nCheck: Is 200 100 more than half as many likes?\nHalf of 200 is 100. 100 + 100 = 200. This matches.\nAfter change:\nLikes: 200 + 0 = 200\nDislikes: 200 + 1000 = 1200\nCheck: Is 1200 1000 more than the likes?\n1200 - 200"
+ },
+ {
+  "id": "gsm8k:train:405",
+  "source": "gsm8k",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "eet) + (6 gaps \u00d7 2 feet) + (2 feet left + 2 feet right)\n- 7 \u00d7 3 = 21 feet\n- 6 \u00d7 2 = 12 feet\n- 21 + 12 + 4 = 37 feet.\n37 feet is less than 42 feet, so 7 boats fit.\n- 8 boats would require: (8 boats \u00d7 3 feet) + (7 gaps \u00d7 2 feet) + (2 feet left + 2 feet right)\n- 8 \u00d7 3 = 24 feet\n- 7 \u00d7 2 = 14 feet\n- 24 +"
+ },
+ {
+  "id": "gsm8k:train:778",
+  "source": "gsm8k",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "returns: $1,200\n   - Total recovered through the bike sale: $480\n   - Total recovered: $1,200 + $480 = $1,680\n   - Total spent minus total recovered: $3,000 - $1,680 = **$1,320**\n\nAlternatively, tracking the cash flow:\n- Start: -$3,000\n- Return TV: +$700\n- Return Bike: +$500\n- Sell Bike: +$480\n- Buy"
+ },
+ {
+  "id": "gsm8k:train:2520",
+  "source": "gsm8k",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": " than that = $6,000 - 400 = 5,600$\n    *   Rockefeller War Tractors = 5,600\n\n*   **Soldier Uniforms:**\n    The problem states Rockefeller has \"30 times as many soldier uniforms as Grenada Army Base.\"\n    *   30 times as many as Grenada = $30 \\times 2,000 = 60,000$\n    *   Rockefeller Uniforms = 60,0"
+ },
+ {
+  "id": "gsm8k:train:2162",
+  "source": "gsm8k",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": " efficiency on city streets:** 18 miles per gallon\n*   **Calculation:**\n    $$ \\text{Gallons}_{\\text{city}} = \\frac{54 \\text{ miles}}{18 \\text{ miles/gallon}} $$\n    $$ \\text{Gallons}_{\\text{city}} = 3 \\text{ gallons} $$\n\n**Step 3: Calculate the total gallons used.**\n*   **Total Gallons** = $\\text{G"
+ },
+ {
+  "id": "gsm8k:train:3257",
+  "source": "gsm8k",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "ypes of math problems found in datasets, the intended calculation is usually:\n            1. Start: 50\n            2. First stop: +16 $\\rightarrow$ 66\n            3. Remaining stops (treated as the net effect described): $-22 + 5 = -17$.\n            4. Final Count: $66 - 17 = 49$.\n    *   *Wait, let"
+ },
+ {
+  "id": "gsm8k:train:3448",
+  "source": "gsm8k",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "eaving 0 clean towels.  \n   - From Day 3 onward, he has no clean towels left to use.\n\n6. **Count the days without clean towels in the following week:**  \n   - The following week has 7 days.  \n   - He has clean towels for the first 2 days (using 2 clean towels each day).  \n   - He does not have clean"
+ },
+ {
+  "id": "mmlu_pro:test:9620",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": " = \\frac{mkA}{M+m}$.\n*   The maximum static friction force is $F_{friction} = \\mu_s (M+m)g$.\n*   For the block to not slide, we require $F_{friction} \\ge F_{req}$.\n    $$ \\mu_s (M+m)g \\ge \\frac{mkA}{M+m} $$\n    $$ \\mu_s \\ge \\frac{mkA}{(M+m)^2 g} $$\n    *Wait, let's re-evaluate the options provided.*"
+ },
+ {
+  "id": "mmlu_pro:test:8186",
+  "source": "mmlu_pro",
+  "class": "loop",
+  "ngram": "Check $3^2$: $3^2 = 9$. Since $9$ is",
+  "offset": 651,
+  "excerpt": ", this is not powerful.\n\n**Option E: 336**\n$336 = 2^4 \\times 3 \\times 7$\nPrime factors: 2, 3, and 7.\nCheck $3^2$: $3^2 = 9$. Since $9$ is not a factor of $336$, this is not powerful.\n\n**Option F: 360**\n$360 = 2^3 \\times 3^2 \\times 5$\nPrime factors: 2, 3, and 5.\nCheck $5^2$: $5^2 = 25$. Since $25$ is"
+ },
+ {
+  "id": "mmlu_pro:test:1056",
+  "source": "mmlu_pro",
+  "class": "other",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "admissibility here relates to the integrity of the evidence (chain of custody) rather than a general lack of accuracy.\n    *   **D:** The timing (three months later) is a fact of the case but does not inherently make the photos inadmissible if they are still authentic.\n    *   **F:** Being developed"
+ },
+ {
+  "id": "mmlu_pro:test:9083",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "$\\tilde{\\nu} = 208 \\text{ cm}^{-1}$:\n$$\\Delta E = hc\\tilde{\\nu}$$\nUsing constants $h = 6.626 \\times 10^{-34} \\text{ J s}$, $c = 3 \\times 10^8 \\text{ m/s}$, and $\\tilde{\\nu} = 208 \\times 100 \\text{ m}^{-1}$ (since $1 \\text{ cm}^{-1} = 100 \\text{ m}^{-1}$):\n$$\\Delta E \\approx (6.626 \\times 10^{-34}) \\"
+ },
+ {
+  "id": "mmlu_pro:test:8029",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "\n$$x_n^2 x_{n+1}^2 = (x_n x_{n+1})^2 = n^2.$$\nSo $x_{n+1}^2 = \\frac{n^2}{x_n^2}$.\n\n**Step 5: Determine the asymptotic behavior.**\nFrom $\\frac{x_n^2}{n} \\to 1$, we have $x_n^2 \\sim n$. This means $x_n \\sim \\sqrt{n}$ (up to sign). The sign of $x_n$ could in principle alternate, but the ratio condition"
+ },
+ {
+  "id": "mmlu_pro:test:11534",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "*   At $30^\\circ\\text{C}$: $\\rho \\approx 996\\text{ kg/m}^3$, $\\mu \\approx 0.355 \\times 10^{-4}\\text{ Pa}\\cdot\\text{s}$\nCalculating $Re$ for both:\n*   $Re_{65} \\approx \\frac{983 \\times 2.829 \\times 0.3}{0.317 \\times 10^{-4}} \\approx 2.67 \\times 10^6$\n*   $Re_{30} \\approx \\frac{996 \\times 2.829 \\times"
+ },
+ {
+  "id": "mmlu_pro:test:11976",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "4$ is wrong. The specific heat of CO\u2082 is approximately $0.24$ is not right. The specific heat of CO\u2082 is roughly $0.24$ is incorrect. The specific heat of CO\u2082 is approximately $0.24$ is wrong. Let's use the molar specific heat approach or standard value: $C_v \\approx 0.24$ is wrong. The specific heat"
+ },
+ {
+  "id": "mmlu_pro:test:521",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "(\\text{Price} \\times \\text{Quantity}) - \\text{Total Cost}$$\n$$\\Pi = (p \\times q) - (\\text{Fixed Costs} + \\text{Variable Costs})$$\n$$\\Pi = (p \\times (4000 - 1000p)) - (500 + 0.40q)$$\nSubstitute $q$ into the variable cost term:\n$$\\Pi = (4000p - 1000p^2) - (500 + 0.40(4000 - 1000p))$$\n$$\\Pi = 4000p - 1"
+ },
+ {
+  "id": "mmlu_pro:test:11085",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": " *   This ratio is approximately equal to the turns ratio ($1/26.17 \\approx 0.0382$). Note that the slight discrepancy is due to the provided values being rounded approximations of the actual turns ratio.\n*   **Normalized Secondary Current:** $I_{2,PU} = \\frac{I_{2NL}}{I_{2,rated}}$. Since the rated"
+ },
+ {
+  "id": "mmlu_pro:test:11841",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "  $$t_p = \\frac{V_p}{Q_p} = \\frac{1,000,000 V_m}{100^4 Q_m} = \\frac{10^6}{10^8} \\frac{V_m}{Q_m} = \\frac{1}{100} t_m$$\n    Given $t_m = 0.8$ min:\n    $$t_p = \\frac{0.8}{100} = 0.008 \\text{ min}$$\n    Wait, let's re-evaluate the scaling logic carefully.\n    If $L_p = 100 L_m$, then $V_p = 100^3 V_m = "
+ },
+ {
+  "id": "mmlu_pro:test:4222",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "athrm{N \\cdot m^2/C^2}$\n*   Avogadro's number $N_A = 6.022 \\times 10^{23} \\mathrm{mol^{-1}}$\n\n**Step 1: Calculate the dipole moment $p$ in Coulomb-meter ($\\mathrm{C \\cdot m}$)**\n$$p = 1.85 \\mathrm{D} \\times 3.33564 \\times 10^{-30} \\mathrm{C \\cdot m/D}$$\n$$p \\approx 6.1709 \\times 10^{-30} \\mathrm{C \\"
+ },
+ {
+  "id": "mmlu_pro:test:4048",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "st possible energy level above the ground state. This means only one quantum number increases by 1 (from 1 to 2), while the others remain at 1.\n    There are three possible first excited states depending on which dimension is excited:\n    1.  Excite $n_x$: $n_x=2, n_y=1, n_z=1$\n    2.  Excite $n_y$:"
+ },
+ {
+  "id": "mmlu_pro:test:7184",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": " Average Variable Cost ($AVC$). If $P < AVC$, the firm cannot cover its variable costs even if it produces zero units, so it is better to shut down.\n*   **Analyzing the Numbers:**\n    *   Total Costs at 9 pools = $80 (VC) + $20 (FC) = $100.\n    *   Average Total Cost ($ATC$) = $\\$100 / 9 \\approx \\$1"
+ },
+ {
+  "id": "mmlu_pro:test:11520",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "\n$$v = v_f + x(v_g - v_f)$$\nFrom steam tables (approximate values at $P_2 = 50 \\text{ psia}$):\n*   $v_f \\approx 0.0011 \\text{ ft}^3/\\text{lbm}$\n*   $v_g \\approx 1.67 \\text{ ft}^3/\\text{lbm}$\n*   $v_2 \\approx 0.0011 + 0.995(1.67 - 0.0011) \\approx 1.66 \\text{ ft}^3/\\text{lbm}$\n\nNow calculate $T_2$:\n$$"
+ },
+ {
+  "id": "mmlu_pro:test:3657",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "tions provided are all higher than 1 atm. Let's re-evaluate the approximation or check the sign of the exponent.\n\nIf we use the linear approximation for the Clausius-Clapeyron equation:\n$$\\frac{dP}{dT} = \\frac{\\Delta H_{vap}}{T(T - T_{vap})}$$\nIntegrating from $T_{vap}$ to $T$:\n$$P - P_{vap} \\approx"
+ },
+ {
+  "id": "mmlu_pro:test:7910",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "values:\n*   $p = 9600$\n*   $k \\approx 0.086177696$\n*   $t = 20$\n\nFirst, calculate the exponent term:\n$$kt = 0.086177696 \\times 20 \\approx 1.72355392$$\n$$e^{-kt} = e^{-1.72355392} \\approx 0.1783$$\n\nNow calculate the present value:\n$$PV = 9600 \\times \\frac{1 - 0.1783}{0.086177696}$$\n$$PV = 9600 \\times"
+ },
+ {
+  "id": "mmlu_pro:test:3968",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "}{8mL^2c} = \\frac{6.626 \\times 10^{-34}}{8(9.109 \\times 10^{-31})(2.00 \\times 10^{-10})^2(2.998 \\times 10^8)}$$\n$$R_{1D} \\approx 1.097 \\times 10^7 \\, \\text{m}^{-1}$$\n\nNow solve for $n$:\n$$n^2 - 1 = \\frac{1}{R_{1D}\\lambda} = \\frac{1}{(1.097 \\times 10^7)(8.79 \\times 10^{-9})}$$\n$$n^2 - 1 = \\frac{1}{0."
+ },
+ {
+  "id": "mmlu_pro:test:4391",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "nt ($13.6057 \\text{ eV}$):\n$$E_{\\text{ionization}} = 13.6057 \\text{ eV} \\cdot 4 \\approx 54.4228 \\text{ eV}$$\n\nComparing this result to the provided options:\n*   A. 48.359 eV\n*   B. 52.307 eV\n*   **C. 70.215 eV** (Incorrect)\n*   D. 60.321 eV (Incorrect)\n*   E. 49.977 eV (Incorrect)\n*   F. 45.678 eV ("
+ },
+ {
+  "id": "mmlu_pro:test:5565",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": " Return}}{\\text{Initial Investment}} $$\n$$ \\text{HPR} = \\frac{106}{104.10} $$\n\nPerform the division:\n$$ \\frac{106}{104.10} \\approx 1.01825 $$\nConvert the decimal to a percentage:\n$$ 1.01825 \\times 100\\% \\approx 10.18\\% $$\n\nRounding to the nearest whole number or matching the provided options:\n*   10"
+ },
+ {
+  "id": "mmlu_pro:test:2485",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "ct (e.g., \"intelligence\" or \"anxiety\") it claims to measure. While related, the specific lack of coverage of the entire curriculum is a failure of **content validity**.\n\n**Conclusion:**\nBecause the exam is restricted to only three specific units and omits the rest of the AP Psychology curriculum, it"
+ },
+ {
+  "id": "mmlu_pro:test:10063",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "$$\n$$-83.47 = (\\gamma - 1) \\times 183.47$$\n$$\\gamma - 1 \\approx -0.455$$\n$$\\gamma \\approx 0.545$$\n\nWait, $\\gamma$ must be greater than or equal to 1. This indicates that the total energy $E$ provided ($100 \\text{ GeV}$) is less than the rest mass energy of the gold nucleus ($183.47 \\text{ GeV}$). In"
+ },
+ {
+  "id": "mmlu_pro:test:9078",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "Q}{4\\pi \\epsilon_0 r^2}$$\n\n**4. Substitute the values:**\nUsing the constant $1/(4\\pi \\epsilon_0) \\approx 8.98755 \\times 10^9 \\text{ N}\\cdot\\text{m}^2/\\text{C}^2$:\n$$E = (8.98755 \\times 10^9) \\cdot \\frac{Q}{r^2}$$\n$$E = (8.98755 \\times 10^9) \\cdot \\frac{1.50588 \\times 10^{-17}}{(6.64 \\times 10^{-15})"
+ },
+ {
+  "id": "mmlu_pro:test:9022",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": ")**\n$$F \\approx 6.67 \\times 10^{-11} \\times 3.0 \\times 10^{30}$$\n$$F \\approx 20 \\times 10^{19} = 2.0 \\times 10^{20} \\, \\text{N}$$\n\nRounding to the nearest power of 10, the force is approximately $10^{20}$ N. Looking at the provided options, the closest \"best estimate\" is **$10^{19}$ N**.\n\nThe answer"
+ },
+ {
+  "id": "mmlu_pro:test:10476",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "hich is more than enough to cover the 1,000 numbers.\n    *   The optimal strategy is binary search, which ensures the search space is reduced by half each time. The worst-case scenario occurs when the target number is the last one remaining in the current subset, requiring exactly the number of bits"
+ },
+ {
+  "id": "mmlu_pro:test:5681",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": " 20,000 units @ $17.00 (We take the remaining 20,000 from the 40,000 purchased on 1/23)\n*   **Total Ending Inventory Value:**\n    *   (20,000 units \u00d7 $13.50) = $270,000\n    *   (20,000 units \u00d7 $15.00) = $300,000\n    *   (20,000 units \u00d7 $17.00) = $340,000\n    *   **Total COGS Inventory Value:** $270,"
+ },
+ {
+  "id": "mmlu_pro:test:4055",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": " the values into the work formula:\n$$W = -nRT \\ln\\left(\\frac{T_f}{T_i}\\right)$$\nUsing $T$ as the initial temperature ($298.15 \\text{ K}$) for the gas constant term in the formula (since $nRT$ represents the initial internal energy/pressure-volume product):\n$$W = -(0.2805 \\text{ mol}) \\times (8.314 \\"
+ },
+ {
+  "id": "mmlu_pro:test:3774",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "\\mu_e}{0.25} = \\frac{\\ln(0.40)}{\\ln(0.60)}$$\n\nCalculating the logarithms:\n- $\\ln(0.40) \\approx -0.9163$\n- $\\ln(0.60) \\approx -0.5108$\n\nNow compute the ratio:\n$$\\frac{\\Delta \\mu_e}{0.25} = \\frac{-0.9163}{-0.5108} \\approx 1.794$$\n\nTherefore:\n$$\\Delta \\mu_e \\approx 0.25 \\times 1.794 \\approx 0.4485 \\, \\"
+ },
+ {
+  "id": "mmlu_pro:test:1830",
+  "source": "mmlu_pro",
+  "class": "other",
+  "ngram": null,
+  "offset": null,
+  "excerpt": ".\n    *   **C:** Incorrect. The insufficient funds suggest a lack of funds, not necessarily fraudulent intent.\n    *   **D:** Incorrect. The parol evidence rule relates to the interpretation of the contract, not the admissibility of evidence regarding the performance of the consideration.\n    *   **"
+ },
+ {
+  "id": "mmlu_pro:test:621",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "ket price and the Social Marginal Cost.\n    *   $Tax = P - SMC$\n    *   $Tax = 20 - 0.5q$\n    *   Wait, $SMC$ is a function of $q$ ($0.5q$). This implies the tax rate might be a constant.\n    *   Let's re-read carefully: \"estimates the social marginal cost of widget production by this firm to be SMC"
+ },
+ {
+  "id": "mmlu_pro:test:3499",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "xt{CH}_3\\text{COO}^-] = x$\n\n**3. Solve for $x$:**\nSubstitute these into the $K_a$ expression:\n$$1.75 \\times 10^{-5} = \\frac{x \\cdot x}{0.1 - x}$$\n\nSince $K_a$ is very small compared to the initial concentration ($1.75 \\times 10^{-5} \\ll 0.1$), we can use the approximation $0.1 - x \\approx 0.1$:\n$$1."
+ },
+ {
+  "id": "mmlu_pro:test:11804",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": " $Sh$:\n$$Sh = 0.332 \\times (2.8 \\times 10^6)^{1/2} \\times (0.0015)^{1/3}$$\n$$Sh \\approx 0.332 \\times 1673 \\times 0.114 \\approx 63.3$$\n\nThe mass transfer coefficient $k_m$ is related to $Sh$ by:\n$$Sh = \\frac{k_m L}{D} \\implies k_m = \\frac{Sh \\cdot D}{L}$$\n$$k_m = \\frac{63.3 \\times 0.1}{2} \\approx 3.1"
+ },
+ {
+  "id": "mmlu_pro:test:7198",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "ic textbooks or exams like the GRE or similar), the critical value is often cited as 1.98. If the standard error of the intercept is approximately 2.0, the margin of error would be $1.98 \\times 2 \\approx 3.96$. However, if the standard error is approximately 1.0, the margin of error is $1.98 \\approx"
+ },
+ {
+  "id": "mmlu_pro:test:11966",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": " \\times 10^{-11} \\times 10.7639$$\n$$D \\approx 3.583 \\times 10^{-10}\\text{ ft}^2/\\text{s}$$\n\n**Step 3: Calculate the Diffusion Coefficient $D$ using the Chapman-Enskog Formula**\nThe Chapman-Enskog formula relates the diffusivity to the viscosity ($\\mu$) and molecular diameter ($\\sigma$):\n$$D = \\frac{"
+ },
+ {
+  "id": "mmlu_pro:test:9510",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": " peak current is the peak EMF divided by the total resistance:\n    $$I_0 = \\frac{\\mathcal{E}_0}{R_{total}} = \\frac{5.25}{15} = 0.35 \\text{ A}$$\n    *Wait, let me re-check the calculation.*\n    $5.25 / 15 = 0.35$. This does not match any of the provided options. Let me re-read the problem carefully.\n"
+ },
+ {
+  "id": "mmlu_pro:test:8087",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "se 7 partitions correspond to the ways to split the balls into two non-empty groups:\n        1. {A}, {B, C, D}\n        2. {B}, {A, C, D}\n        3. {C}, {A, B, D}\n        4. {D}, {A, B, C}\n        5. {A, B}, {C, D}\n        6. {A, C}, {B, D}\n        7. {A, D}, {B, C}\n    *   **Total:** Total ways = ("
+ },
+ {
+  "id": "mmlu_pro:test:1138",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "not in danger until the push occurred.\n    *   **D:** Incorrect. There is no general duty to retreat if the defendant is the initial aggressor or if retreat is impossible/unsafe.\n    *   **E:** Incorrect. The defendant did not need to de-escalate after being physically threatened and pushed.\n    *  "
+ },
+ {
+  "id": "mmlu_pro:test:11080",
+  "source": "mmlu_pro",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "lb/ft}^3$.\n\n3.  **Apply Bernoulli's Equation with Coefficient of Velocity:**\n    The energy equation for a venturi is:\n    $$ P_1 + \\frac{V_1^2}{2g_c} = P_2 + \\frac{V_2^2}{2g_c} + \\frac{V_1^2 - V_2^2}{2g_c} $$\n    Where $V_2 = C_v V_1$.\n    $$ P_1 - P_2 = \\frac{1}{2g_c} (V_1^2 - V_2^2)(1 - C_v^2) $$"
+ },
+ {
+  "id": "mbpp:train:359",
+  "source": "mbpp",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "n 1150000000000\n    if n == 34:\n        return 2980000000000\n    if n == 35:\n        return 7720000000000\n    if n == 36:\n        return 19900000000000\n    if n == 37:\n        return 51300000000000\n    if n == 38:\n        return 132500000000000\n    if n == 39:\n        return 342000000000000\n    if n"
+ },
+ {
+  "id": "mbpp:train:164",
+  "source": "mbpp",
+  "class": "overlong",
+  "ngram": null,
+  "offset": null,
+  "excerpt": "      # 6 = 1+2+3 (Polite).\n            # 7 = 3+4 (Polite).\n            # 8 = ? Not polite.\n            # 9 = 4+5 (Polite).\n            # 10 = 1+2+3+4 (Polite).\n            # 11 = 5+6 (Polite).\n            # The assertion says is_polite(7) == 11.\n            # Wait, the function is named is_polite(n"
+ }
+]

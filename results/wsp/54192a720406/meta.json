@@ -1,0 +1,10 @@
+{
+ "sha256": "54192a7204062c5f95d5e35a26a8f1c759b2799aabb122d55c0c62449cbe8c9b",
+ "gguf": "results/wsp/models/noise2.gguf",
+ "max_tokens": {
+  "gsm8k": 512,
+  "mmlu_pro": 512,
+  "mbpp": 768,
+  "arc": 512
+ }
+}

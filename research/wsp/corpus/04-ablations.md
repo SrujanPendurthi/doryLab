@@ -27,3 +27,10 @@ Evidence: `results/wsp/corpus/ablations.json`. 20 truncated (loop/overlong) vs 2
 | layer.60 | -0.083 | -0.054 | -0.029 |
 | layer.45 | -0.109 | -0.137 | 0.029 |
 
+
+## bf16 vs fp32 re-measurement
+
+| component | trunc bf16 | trunc fp32 | fin bf16 | fin fp32 | diff bf16 | diff fp32 |
+|---|---|---|---|---|---|---|
+| layer.16 | -0.655 | -0.656 | -0.472 | -0.471 | -0.183 | -0.185 |
+| layer.34 | -1.413 | -1.417 | -1.284 | -1.289 | -0.129 | -0.127 |
