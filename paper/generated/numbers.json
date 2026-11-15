@@ -277,5 +277,15 @@
  "TrainMmluKTwoTruncRate": "0.641",
  "TrainMmluRescued": "59",
  "TrainMmluRescuedTruncOne": "36",
- "TrainN": "1500"
+ "TrainN": "1500",
+ "WspBestDacc": "1.0",
+ "WspBestDaccHi": "4.3",
+ "WspBestDaccLo": "-2.3",
+ "WspCtrlAbsMax": "1.3",
+ "WspEdits": "6",
+ "WspHoldoutTested": "2",
+ "WspScreenRejects": "4",
+ "WspTokRatioMax": "1.05",
+ "WspTokRatioMin": "1.04",
+ "WspWorstDacc": "-0.7"
 }

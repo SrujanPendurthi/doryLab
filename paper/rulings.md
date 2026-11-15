@@ -111,3 +111,7 @@ Ruling P9: no public remote exists, so the paper says "available from the author
 Ruling P10: add a "Use of AI tools" disclosure with default wording (TODO(author) confirm) and move process-only rulings out of Appendix A to paper/rulings.md — cost if wrong: author edits wording.
 
 Ruling P11: C4b uses the 1024-cap re-sweep only as an analysis of label sensitivity; the controller and its reported results stay on the 512-cap labels (no refit) — cost if wrong: refit and re-run final test.
+
+Ruling P9 resolved: author supplied the public repo URL (https://github.com/SrujanPendurthi/doryLab); TODO removed.
+Ruling P10 resolved: author confirmed the "Use of AI tools" wording; TODO removed.
+Ruling P12: weight-space edit negative result (research/wsp/ledger.md) added as a Limitations bullet, numbers generated from the ledger (Wsp* macros) — cost if wrong: one bullet.

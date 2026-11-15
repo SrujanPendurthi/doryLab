@@ -52,3 +52,10 @@ def test_mmlu1024_cap_resweep(V):
     assert V["MmluCapFourAccBigCap"] == 60 and V["MmluCapFourTruncBigCap"] == 19
     assert (V["MmluCapFourWins"], V["MmluCapFourLosses"]) == (9, 5)
     assert V["MmluCapOneAccSmallCap"] == 48 and V["MmluCapTwoRescuedByCap"] == 13
+
+
+def test_wsp_negative_result(V):
+    # research/wsp/ledger.md: e001-e006 all rejected; e002 and e006 reached holdout
+    assert (V["WspEdits"], V["WspScreenRejects"], V["WspHoldoutTested"]) == (6, 4, 2)
+    assert (V["WspBestDacc"], V["WspBestDaccLo"], V["WspBestDaccHi"]) == pytest.approx((1.0, -2.3, 4.3))
+    assert V["WspWorstDacc"] == pytest.approx(-0.7)

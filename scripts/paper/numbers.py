@@ -313,6 +313,27 @@ def compute():
     put("MmluCapLiftMax", max(M[k]["a10"] - M[k]["a5"] for k in M), 0)
     compute.cap = M
 
+    # --- Weight-space edits (negative result): parsed from the pre-registered ledger ---
+    led = {}
+    for block in (ROOT / "research/wsp/ledger.md").read_text().split("\n## ")[1:]:
+        f = dict(l[2:].split(": ", 1) for l in block.splitlines()[1:] if l.startswith("- ") and ": " in l)
+        led[block.splitlines()[0].strip()] = f
+    real = {k: f for k, f in led.items() if k != "e000-noop"}
+    held = {k: json.loads(f["edit_vs_best"]) for k, f in real.items() if "edit_vs_best" in f}
+    ctrl = [json.loads(f["ctrl_vs_best"])["dacc_pts"] for f in real.values() if "ctrl_vs_best" in f]
+    assert all(f["decision"].startswith("REJECT") for f in real.values())
+    best = max(held.values(), key=lambda h: h["dacc_pts"])
+    put("WspEdits", len(real), 0)
+    put("WspScreenRejects", sum("reject: screen" in f["decision"] for f in real.values()), 0)
+    put("WspHoldoutTested", len(held), 0)
+    put("WspBestDacc", best["dacc_pts"], 1)
+    put("WspBestDaccLo", best["ci_pts"][0], 1)
+    put("WspBestDaccHi", best["ci_pts"][1], 1)
+    put("WspWorstDacc", min(h["dacc_pts"] for h in held.values()), 1)
+    put("WspCtrlAbsMax", max(abs(c) for c in ctrl), 1)
+    put("WspTokRatioMin", min(h["tokens_ratio"] for h in held.values()), 2)
+    put("WspTokRatioMax", max(h["tokens_ratio"] for h in held.values()), 2)
+
     compute.tables = (rows, T, sysrows, sp, speed)
     return V
 
