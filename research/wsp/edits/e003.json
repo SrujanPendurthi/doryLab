@@ -1,0 +1,97 @@
+{
+ "id": "e003",
+ "hypothesis": "Removing the MMLU truncated-minus-finished residual direction from recurrent MLP writes (layers 17-35, alpha 1) shortens overlong reasoning",
+ "evidence": [
+  "research/wsp/corpus/05-circuits.md",
+  "results/wsp/corpus/precheck_trunc_17-55.json"
+ ],
+ "predict": "MMLU truncation rate falls and MMLU accuracy rises; gsm8k/mbpp within noise",
+ "ops": [
+  {
+   "tensor": "backbone.layers.17.mixer.down_proj.weight",
+   "op": "lowrank_add",
+   "npz": "research/wsp/edits/e003.npz",
+   "u": "u17",
+   "v": "v17"
+  },
+  {
+   "tensor": "backbone.layers.19.mixer.down_proj.weight",
+   "op": "lowrank_add",
+   "npz": "research/wsp/edits/e003.npz",
+   "u": "u19",
+   "v": "v19"
+  },
+  {
+   "tensor": "backbone.layers.21.mixer.down_proj.weight",
+   "op": "lowrank_add",
+   "npz": "research/wsp/edits/e003.npz",
+   "u": "u21",
+   "v": "v21"
+  },
+  {
+   "tensor": "backbone.layers.23.mixer.down_proj.weight",
+   "op": "lowrank_add",
+   "npz": "research/wsp/edits/e003.npz",
+   "u": "u23",
+   "v": "v23"
+  },
+  {
+   "tensor": "backbone.layers.25.mixer.down_proj.weight",
+   "op": "lowrank_add",
+   "npz": "research/wsp/edits/e003.npz",
+   "u": "u25",
+   "v": "v25"
+  },
+  {
+   "tensor": "backbone.layers.27.mixer.down_proj.weight",
+   "op": "lowrank_add",
+   "npz": "research/wsp/edits/e003.npz",
+   "u": "u27",
+   "v": "v27"
+  },
+  {
+   "tensor": "backbone.layers.29.mixer.down_proj.weight",
+   "op": "lowrank_add",
+   "npz": "research/wsp/edits/e003.npz",
+   "u": "u29",
+   "v": "v29"
+  },
+  {
+   "tensor": "backbone.layers.31.mixer.down_proj.weight",
+   "op": "lowrank_add",
+   "npz": "research/wsp/edits/e003.npz",
+   "u": "u31",
+   "v": "v31"
+  },
+  {
+   "tensor": "backbone.layers.33.mixer.down_proj.weight",
+   "op": "lowrank_add",
+   "npz": "research/wsp/edits/e003.npz",
+   "u": "u33",
+   "v": "v33"
+  },
+  {
+   "tensor": "backbone.layers.35.mixer.down_proj.weight",
+   "op": "lowrank_add",
+   "npz": "research/wsp/edits/e003.npz",
+   "u": "u35",
+   "v": "v35"
+  }
+ ],
+ "recipe": {
+  "dir": "trunc",
+  "alpha": 1.0,
+  "layers": [
+   17,
+   19,
+   21,
+   23,
+   25,
+   27,
+   29,
+   31,
+   33,
+   35
+  ]
+ }
+}

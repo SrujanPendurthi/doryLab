@@ -1,3 +1,4 @@
+import os
 import random
 import re
 import subprocess
@@ -8,11 +9,12 @@ from functools import lru_cache
 
 import datasets
 
-MAX_TOKENS = {"gsm8k": 512, "mmlu_pro": 512, "mbpp": 768}
+MAX_TOKENS = {"gsm8k": 512, "mmlu_pro": 512, "mbpp": 768, "arc": 512}
 HF = {
     "gsm8k": ("openai/gsm8k", "main"),
     "mmlu_pro": ("TIGER-Lab/MMLU-Pro", None),
     "mbpp": ("google-research-datasets/mbpp", "full"),
+    "arc": ("allenai/ai2_arc", "ARC-Challenge"),
 }
 # (source, hf split, n) in order; each split excludes ids of the earlier ones
 SPLITS = {
@@ -45,6 +47,11 @@ def _item(source, split, i, row):
     if source == "mmlu_pro":
         opts = "\n".join(f"{chr(65 + j)}. {o}" for j, o in enumerate(row["options"]))
         return Item(id_, source, f"{row['question']}\n{opts}\n\nEnd with 'The answer is (X)'.", row["answer"])
+    if source == "arc":
+        labels = [{"1": "A", "2": "B", "3": "C", "4": "D"}.get(l, l) for l in row["choices"]["label"]]
+        opts = "\n".join(f"{l}. {t}" for l, t in zip(labels, row["choices"]["text"]))
+        gold = {"1": "A", "2": "B", "3": "C", "4": "D"}.get(row["answerKey"], row["answerKey"])
+        return Item(id_, source, f"{row['question']}\n{opts}\n\nEnd with 'The answer is (X)'.", gold)
     tests = list(row["test_list"])
     if row["test_setup_code"]:
         tests.insert(0, row["test_setup_code"])
@@ -61,6 +68,16 @@ def load(source: str, split: str, n: int, seed: int = 0, exclude: set[str] = set
 
 
 def load_split(name: str) -> list[Item]:
+    if name == "wsp_screen":  # first 20 per source of holdout, holdout order
+        ho = load_split("holdout")
+        return [it for s in ("gsm8k", "mmlu_pro", "mbpp") for it in [i for i in ho if i.source == s][:20]]
+    if name == "wsp_final":  # sealed until the final report
+        if os.environ.get("WSP_UNSEAL") != "1":
+            raise PermissionError("wsp_final is sealed; set WSP_UNSEAL=1")
+        seen = {it.id for sp in SPLITS for it in load_split(sp)}
+        return [it for s in ("gsm8k", "mmlu_pro", "mbpp") for it in load(s, "test", 100, exclude=seen)]
+    if name == "arc":
+        return load("arc", "test", 200)
     out, seen = [], set()
     # earlier splits' ids are excluded; dicts keep holdout, final, train order
     for sp, parts in SPLITS.items():
@@ -104,7 +121,7 @@ def grade(item: Item, output: str, truncated: bool = False) -> bool:
     if item.source == "gsm8k":
         got, gold = _num(output, not truncated), _num(item.gold)
         return got is not None and gold is not None and got == gold
-    if item.source == "mmlu_pro":
+    if item.source in ("mmlu_pro", "arc"):
         m = re.findall(r"(?i:answer(?:\s+is\s*:?|\s*:))\s*[:\s]*\**\s*\(?\**([A-J])\**\)?(?![A-Za-z])", output)
         if not m and not truncated:
             lines = output.strip().splitlines()

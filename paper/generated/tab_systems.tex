@@ -1,0 +1,12 @@
+\begin{tabular}{lrl}
+\toprule
+Configuration & Speed vs plain & Notes \\
+\midrule
+Self-speculative, draft 4 & 1.21$\times$ [1.16, 1.26] & acceptance 0.84, outputs identical \\
+Self-speculative, draft 6 & 1.26$\times$ [1.19, 1.34] & acceptance 0.76, outputs identical \\
+n-gram lookup (MBPP) & 0.74$\times$ & \\
+Partial GPU offload (54/72 layers) & 0.93$\times$ & same graded accuracy \\
+Sequential A/B (artifact) & 0.29$\times$ & arms hours apart under varying load \\
+Core ML (Neural Engine) classifier & 2.5$\times$ & 17.9 vs 44.3 ms (MPS) \\
+\bottomrule
+\end{tabular}

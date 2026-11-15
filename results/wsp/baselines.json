@@ -1,0 +1,211 @@
+{
+ "screen_k1": {
+  "acc": 0.5833333333333334,
+  "n": 60,
+  "mean_tokens": 226.71666666666667,
+  "trunc_rate": 0.11666666666666667,
+  "per_source": {
+   "gsm8k": {
+    "acc": 0.85,
+    "n": 20,
+    "mean_tokens": 274.15
+   },
+   "mbpp": {
+    "acc": 0.5,
+    "n": 20,
+    "mean_tokens": 80.5
+   },
+   "mmlu_pro": {
+    "acc": 0.4,
+    "n": 20,
+    "mean_tokens": 325.5
+   }
+  }
+ },
+ "determinism": {
+  "identical": 58,
+  "n": 60,
+  "slots": 4,
+  "ok": true
+ },
+ "noise0": {
+  "n_changed": 58615,
+  "n_requested": 58716,
+  "acc": 0.5833333333333334,
+  "n": 60,
+  "mean_tokens": 232.75,
+  "trunc_rate": 0.11666666666666667,
+  "per_source": {
+   "gsm8k": {
+    "acc": 0.85,
+    "n": 20,
+    "mean_tokens": 276.75
+   },
+   "mbpp": {
+    "acc": 0.5,
+    "n": 20,
+    "mean_tokens": 89.7
+   },
+   "mmlu_pro": {
+    "acc": 0.4,
+    "n": 20,
+    "mean_tokens": 331.8
+   }
+  }
+ },
+ "noise1": {
+  "n_changed": 58604,
+  "n_requested": 58718,
+  "acc": 0.6333333333333333,
+  "n": 60,
+  "mean_tokens": 226.03333333333333,
+  "trunc_rate": 0.11666666666666667,
+  "per_source": {
+   "gsm8k": {
+    "acc": 0.9,
+    "n": 20,
+    "mean_tokens": 268.85
+   },
+   "mbpp": {
+    "acc": 0.55,
+    "n": 20,
+    "mean_tokens": 80.95
+   },
+   "mmlu_pro": {
+    "acc": 0.45,
+    "n": 20,
+    "mean_tokens": 328.3
+   }
+  }
+ },
+ "noise2": {
+  "n_changed": 58628,
+  "n_requested": 58714,
+  "acc": 0.5666666666666667,
+  "n": 60,
+  "mean_tokens": 232.85,
+  "trunc_rate": 0.15,
+  "per_source": {
+   "gsm8k": {
+    "acc": 0.8,
+    "n": 20,
+    "mean_tokens": 283.95
+   },
+   "mbpp": {
+    "acc": 0.55,
+    "n": 20,
+    "mean_tokens": 78.45
+   },
+   "mmlu_pro": {
+    "acc": 0.35,
+    "n": 20,
+    "mean_tokens": 336.15
+   }
+  }
+ },
+ "holdout_k1": {
+  "acc": 0.5766666666666667,
+  "n": 300,
+  "mean_tokens": 229.53,
+  "trunc_rate": 0.13666666666666666,
+  "per_source": {
+   "gsm8k": {
+    "acc": 0.84,
+    "n": 100,
+    "mean_tokens": 269.68
+   },
+   "mbpp": {
+    "acc": 0.45,
+    "n": 100,
+    "mean_tokens": 108.22
+   },
+   "mmlu_pro": {
+    "acc": 0.44,
+    "n": 100,
+    "mean_tokens": 310.69
+   }
+  }
+ },
+ "arc_k1": {
+  "acc": 0.905,
+  "n": 200,
+  "mean_tokens": 151.685,
+  "trunc_rate": 0.0,
+  "per_source": {
+   "arc": {
+    "acc": 0.905,
+    "n": 200,
+    "mean_tokens": 151.685
+   }
+  }
+ },
+ "research_k1": {
+  "acc": 0.63,
+  "n": 300,
+  "mean_tokens": 246.73,
+  "trunc_rate": 0.15666666666666668,
+  "per_source": {
+   "gsm8k": {
+    "acc": 0.84,
+    "n": 100,
+    "mean_tokens": 287.75
+   },
+   "mbpp": {
+    "acc": 0.63,
+    "n": 100,
+    "mean_tokens": 82.59
+   },
+   "mmlu_pro": {
+    "acc": 0.42,
+    "n": 100,
+    "mean_tokens": 369.85
+   }
+  }
+ },
+ "holdout_k2": {
+  "acc": 0.6033333333333334,
+  "n": 300,
+  "mean_tokens": 231.78333333333333,
+  "trunc_rate": 0.14333333333333334,
+  "per_source": {
+   "gsm8k": {
+    "acc": 0.88,
+    "n": 100,
+    "mean_tokens": 267.98
+   },
+   "mbpp": {
+    "acc": 0.47,
+    "n": 100,
+    "mean_tokens": 94.54
+   },
+   "mmlu_pro": {
+    "acc": 0.46,
+    "n": 100,
+    "mean_tokens": 332.83
+   }
+  }
+ },
+ "holdout_k4": {
+  "acc": 0.6266666666666667,
+  "n": 300,
+  "mean_tokens": 231.01,
+  "trunc_rate": 0.13,
+  "per_source": {
+   "gsm8k": {
+    "acc": 0.88,
+    "n": 100,
+    "mean_tokens": 255.66
+   },
+   "mbpp": {
+    "acc": 0.47,
+    "n": 100,
+    "mean_tokens": 102.22
+   },
+   "mmlu_pro": {
+    "acc": 0.53,
+    "n": 100,
+    "mean_tokens": 335.15
+   }
+  }
+ }
+}

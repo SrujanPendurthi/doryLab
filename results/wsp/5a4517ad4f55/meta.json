@@ -1,0 +1,10 @@
+{
+ "sha256": "5a4517ad4f5532a4a061dbc3946e154e194dc0b1d85ed24fe7565d4c2a430e18",
+ "gguf": "models/gguf/dory-base-q8_0.gguf",
+ "max_tokens": {
+  "gsm8k": 512,
+  "mmlu_pro": 512,
+  "mbpp": 768,
+  "arc": 512
+ }
+}
