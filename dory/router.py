@@ -9,7 +9,7 @@ import numpy as np
 from dory.client import Completion, complete
 from dory.config import KS
 from dory.features import text_features
-from dory.policy import choose_k, load_policy, proba_for_ks
+from dory.policy import choose_k, decide_k, load_policy, proba_for_ks
 from dory.server import Server, free_port, server_args
 
 LOOKUP_ARGS: list[str] = []  # filled from Task 3 results once n-gram lookup support is confirmed
@@ -58,7 +58,9 @@ class Router:
                 from dory.probe import probe_features  # lazy: only probe policies need it
                 P = probe_features([prompt], self.probe_url)
                 X = P if self.feature_set == "probe" else np.hstack([P, X])
-            k = int(choose_k(proba_for_ks(self.policy["model"], X), is_code, self.policy["tau"])[0])
+                k = int(choose_k(proba_for_ks(self.policy["model"], X), is_code, self.policy["tau"])[0])
+            else:
+                k = decide_k(self.policy, prompt, _features=(X, is_code))
         return k, time.perf_counter() - t0, bool(is_code[0])
 
     def generate(self, prompt: str, max_tokens: int | None = None) -> tuple[Completion, int]:

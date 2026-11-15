@@ -6,6 +6,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 from dory.config import KS, MIN_CODE_K
+from dory.features import text_features
 
 FEATURE_SETS = {"text", "probe", "probe+text"}
 
@@ -31,6 +32,18 @@ def choose_k(proba, is_code, tau: float, ks=KS, min_code_k=MIN_CODE_K) -> np.nda
     idx = np.where((cum >= tau).any(1), (cum >= tau).argmax(1), len(ks) - 1)
     k = np.asarray(ks)[idx]
     return np.where(np.asarray(is_code, bool), np.maximum(k, min_code_k), k)
+
+
+def decide_k(policy: dict, text: str, *, _features=None) -> int:
+    """Choose loops from text using the policy threshold and code floor.
+
+    Router supplies its already computed features because it also needs is_code.
+    """
+    if _features is None:
+        X, is_code, _ = text_features([text])
+    else:
+        X, is_code = _features
+    return int(choose_k(proba_for_ks(policy["model"], X), is_code, policy["tau"])[0])
 
 
 def tau_for_mean_k(proba, is_code, target: float) -> float:
