@@ -1,5 +1,6 @@
 """OpenAI chat gateway backed by one llama-server with per-request loop counts."""
 import argparse
+import http.client
 import json
 import signal
 import sys
@@ -58,7 +59,7 @@ class _Stats:
 
 class Gateway(ThreadingHTTPServer):
     def __init__(self, port=8083, policy_path=Path("results/policy_text.joblib"),
-                 gguf=Path("models/dory-q5.gguf"), ctx=16384,
+                 gguf=Path("models/dory-q5.gguf"), ctx=24576,
                  log_path=Path("results/logs/gateway.log")):
         policy = load_policy(policy_path)
         if policy["feature_set"] != "text":
@@ -66,6 +67,7 @@ class Gateway(ThreadingHTTPServer):
         self.log_path = Path(log_path)
         self.log_lock = threading.Lock()
         self.decision_lock = threading.Lock()
+        self.upstream_exit_logged = False
 
         # Cache only by text. The policy is fixed for this gateway's lifetime.
         @lru_cache(maxsize=256)
@@ -124,6 +126,15 @@ class Gateway(ThreadingHTTPServer):
         except Exception:
             pass
 
+    def log_upstream_exit(self):
+        with self.log_lock:
+            process = self.upstream._p
+            if process.poll() is not None and not self.upstream_exit_logged:
+                self.upstream_exit_logged = True
+                sys.stderr.write(f"llama-server exited with {process.returncode}; stderr tail:\n"
+                                 f"{self.upstream._tail()}\n")
+                sys.stderr.flush()
+
 
 class _Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
@@ -164,17 +175,22 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             # MPS classifier is not thread-safe. Lock outside the cache so concurrent
             # tool steps cannot race into duplicate inference on a cache miss.
-            with self.server.decision_lock:
-                k = self.server.decision(text)
-            body["n_loops"] = int(k)  # always override, including a client-supplied null
+            try:
+                with self.server.decision_lock:
+                    k = int(self.server.decision(text))
+            except Exception as exc:
+                self._json(500, {"error": {"message": f"loop selection failed: {exc}"}})
+                return
+            body["n_loops"] = k  # always override, including a client-supplied null
             req = urllib.request.Request(self.server.upstream.url + self.path,
                                          data=json.dumps(body).encode(),
                                          headers={"Content-Type": "application/json"})
             try:
-                upstream = urllib.request.urlopen(req)
+                upstream = urllib.request.urlopen(req, timeout=900)
             except urllib.error.HTTPError as exc:
                 upstream = exc  # forward upstream validation errors verbatim too
-            except (urllib.error.URLError, OSError):
+            except (urllib.error.URLError, http.client.HTTPException, OSError):
+                self.server.log_upstream_exit()
                 self._json(502, {"error": "upstream unavailable"})
                 return
             with upstream:
@@ -193,6 +209,10 @@ class _Handler(BaseHTTPRequestHandler):
                     self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             pass  # leaving the upstream context closes the generation request
+        except (http.client.HTTPException, OSError) as exc:
+            self.close_connection = True
+            sys.stderr.write(f"upstream response interrupted: {exc}\n")
+            sys.stderr.flush()
         finally:
             self.server.log_request(k, stats)
 
@@ -202,7 +222,7 @@ def main(argv=None):
     parser.add_argument("--port", type=int, default=8083)
     parser.add_argument("--policy", type=Path, default=Path("results/policy_text.joblib"))
     parser.add_argument("--gguf", type=Path, default=Path("models/dory-q5.gguf"))
-    parser.add_argument("--ctx", type=int, default=16384)
+    parser.add_argument("--ctx", type=int, default=24576)
     args = parser.parse_args(argv)
 
     def stop(signum, frame):

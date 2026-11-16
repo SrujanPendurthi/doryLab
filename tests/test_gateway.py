@@ -7,6 +7,8 @@ import threading
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from types import SimpleNamespace
+import urllib.error
 
 import pytest
 
@@ -71,6 +73,7 @@ def rig(monkeypatch, tmp_path):
         def __init__(self, args, port):
             self.args, self.port, self.stopped = args, port, False
             self.url = f"http://127.0.0.1:{upstream.server_port}"
+            self._p = SimpleNamespace(poll=lambda: None, returncode=None)
             instances.append(self)
 
         def stop(self):
@@ -193,7 +196,7 @@ def test_models_endpoint(rig):
 
 def test_server_defaults(rig):
     args = rig[-1][0].args
-    for flag, value in [("-m", "models/dory-q5.gguf"), ("-np", "1"), ("-c", "16384"),
+    for flag, value in [("-m", "models/dory-q5.gguf"), ("-np", "1"), ("-c", "24576"),
                         ("--spec-type", "draft-simple"), ("--spec-draft-n-max", "4"),
                         ("--spec-draft-loops", "1")]:
         assert args[args.index(flag) + 1] == value
@@ -240,6 +243,86 @@ def test_upstream_error_passthrough(rig):
     assert request(gateway, {"messages": []}) == (400, state["body"])
 
 
+def test_decide_k_failure_returns_500(rig, monkeypatch):
+    gateway, seen, *_ = rig
+
+    def fail(*args):
+        raise RuntimeError("MPS classifier failed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(G, "decide_k", fail)
+        status, body = request(gateway, {"messages": [{"role": "user", "content": "hi"}]})
+        assert status == 500
+        assert json.loads(body) == {"error": {"message": "loop selection failed: MPS classifier failed"}}
+        assert not seen
+    assert request(gateway, {"messages": []}) == (200, REPLY)
+
+
+@pytest.mark.parametrize("exited", [False, True])
+def test_upstream_down_returns_502_and_logs_exit_once(rig, monkeypatch, capsys, exited):
+    gateway = rig[0]
+    server = gateway.upstream
+    tails = []
+    server._p = SimpleNamespace(poll=lambda: 1 if exited else None, returncode=1)
+    server._tail = lambda: tails.append(True) or "fatal: Metal allocation failed"
+
+    def unavailable(req, timeout):
+        assert timeout == 900
+        raise urllib.error.URLError(ConnectionRefusedError("connection refused"))
+
+    monkeypatch.setattr(G.urllib.request, "urlopen", unavailable)
+    for _ in range(2):
+        status, body = request(gateway, {"messages": []})
+        assert status == 502 and json.loads(body) == {"error": "upstream unavailable"}
+    assert tails == ([True] if exited else [])
+    assert capsys.readouterr().err.count("fatal: Metal allocation failed") == int(exited)
+
+
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize("failure", [http.client.IncompleteRead(b"partial", 20),
+                                   http.client.HTTPException("bad upstream response"),
+                                   OSError("upstream read failed")])
+def test_interrupted_upstream_closes_cleanly(rig, monkeypatch, capsys, stream, failure):
+    gateway, _, _, _, _, path, _ = rig
+
+    class Interrupted:
+        status = 200
+        headers = {"Content-Type": "text/event-stream" if stream else "application/json"}
+        sent = False
+        closed = False
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.closed = True
+
+        def read1(self, size):
+            if not self.sent:
+                self.sent = True
+                return SSE[0]
+            raise failure
+
+        def read(self):
+            raise failure
+
+    upstream = Interrupted()
+    with monkeypatch.context() as patch:
+        def open_upstream(req, timeout):
+            assert timeout == 900
+            return upstream
+
+        patch.setattr(G.urllib.request, "urlopen", open_upstream)
+        assert request(gateway, {"messages": [], "stream": stream}) == (200, SSE[0] if stream else b"")
+    assert upstream.closed
+    assert gateway.logged.wait(5)
+    assert "k=1" in path.read_text()
+    errors = capsys.readouterr().err
+    assert "upstream response interrupted:" in errors
+    assert "Traceback" not in errors
+    assert request(gateway, {"messages": []}) == (200, REPLY)
+
+
 def test_invalid_json_then_valid_request(rig):
     conn = http.client.HTTPConnection("127.0.0.1", rig[0].server_port, timeout=5)
     conn.request("POST", "/v1/chat/completions", b"{")
@@ -257,7 +340,7 @@ def test_main_stops_on_signal(monkeypatch, signum):
     class FakeGateway:
         def __init__(self, **kwargs):
             assert kwargs == {"port": 8083, "policy_path": Path("results/policy_text.joblib"),
-                              "gguf": Path("models/dory-q5.gguf"), "ctx": 16384}
+                              "gguf": Path("models/dory-q5.gguf"), "ctx": 24576}
 
         def serve_forever(self):
             handlers[signum](signum, None)

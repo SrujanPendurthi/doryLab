@@ -15,4 +15,4 @@ fi
 
 # vendor is a symlink to the main repo in a worktree; pwd -P resolves it.
 export DORY_LLAMA_BIN="$(cd "$ROOT/vendor" && pwd -P)/llama.cpp-loops/build/bin"
-exec "$ROOT/.venv/bin/python" -m dory.gateway
+exec "$ROOT/.venv/bin/python" -m dory.gateway --ctx 24576

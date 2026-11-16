@@ -11,8 +11,15 @@ esac
 [ -d vendor/llama.cpp ] || git clone --depth 1 https://github.com/ggml-org/llama.cpp vendor/llama.cpp
 if [ "${1:-}" = "--loops" ]; then
     # Leave the stock checkout and its build untouched.
-    git -C vendor/llama.cpp cat-file -e "$LLAMA_REF"
-    [ -d vendor/llama.cpp-loops ] || git -C vendor/llama.cpp worktree add -b dory-runtime-loops ../llama.cpp-loops "$LLAMA_REF"
+    git -C vendor/llama.cpp cat-file -e "$LLAMA_REF" 2>/dev/null || git -C vendor/llama.cpp fetch --depth 1 origin pull/30306/head:dory
+    if [ ! -d vendor/llama.cpp-loops ]; then
+        git -C vendor/llama.cpp worktree prune
+        if git -C vendor/llama.cpp show-ref --verify --quiet refs/heads/dory-runtime-loops; then
+            git -C vendor/llama.cpp worktree add ../llama.cpp-loops dory-runtime-loops
+        else
+            git -C vendor/llama.cpp worktree add -b dory-runtime-loops ../llama.cpp-loops "$LLAMA_REF"
+        fi
+    fi
     cd vendor/llama.cpp-loops
     PATCH=$ROOT/patches/llama-dory-runtime-loops.patch
     if ! git apply --reverse --check "$PATCH" 2>/dev/null; then
