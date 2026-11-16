@@ -1,0 +1,740 @@
+diff --git a/common/arg.cpp b/common/arg.cpp
+index e6d6450..6e9f535 100644
+--- a/common/arg.cpp
++++ b/common/arg.cpp
+@@ -4202,6 +4202,17 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
+             params.speculative.draft.n_max = value;
+         }
+     ).set_spec().set_examples({LLAMA_EXAMPLE_SPECULATIVE, LLAMA_EXAMPLE_LOOKUP, LLAMA_EXAMPLE_SERVER, LLAMA_EXAMPLE_CLI}).set_env("LLAMA_ARG_SPEC_DRAFT_N_MAX"));
++    add_opt(common_arg(
++        {"--spec-draft-loops"}, "N",
++        "Dory: draft with the target model itself running N loops (no draft model file needed)",
++        [](common_params & params, int value) {
++            if (value < 1) {
++                throw std::invalid_argument("invalid value");
++            }
++            params.speculative.draft.n_loops = value;
++            params.speculative.types = { COMMON_SPECULATIVE_TYPE_DRAFT_SIMPLE };
++        }
++    ).set_spec().set_examples({LLAMA_EXAMPLE_SERVER}).set_env("LLAMA_ARG_SPEC_DRAFT_LOOPS"));
+     add_opt(common_arg(
+         {"--spec-draft-n-min"}, "N",
+         string_format("minimum number of draft tokens to use for speculative decoding (default: %d)", params.speculative.draft.n_min),
+diff --git a/common/common.h b/common/common.h
+index ab08d15..e68318d 100644
+--- a/common/common.h
++++ b/common/common.h
+@@ -347,6 +347,8 @@ struct common_params_speculative_draft {
+ 
+     int32_t n_ubatch = 0; // physical batch size of the draft context (0 - use the target's n_ubatch)
+ 
++    int32_t n_loops = 0; // Dory: draft context on the target weights running this many loops, no -md (0 = off)
++
+     ggml_type cache_type_k = GGML_TYPE_F16; // KV cache data type for the K
+     ggml_type cache_type_v = GGML_TYPE_F16; // KV cache data type for the V
+ 
+diff --git a/common/speculative.cpp b/common/speculative.cpp
+index 4305ac6..388be85 100644
+--- a/common/speculative.cpp
++++ b/common/speculative.cpp
+@@ -2745,6 +2745,20 @@ common_speculative_init_result::common_speculative_init_result(
+             return;
+         }
+ 
++        pimpl->context.reset(ctx_dft);
++    } else if (params.speculative.draft.n_loops > 0) {
++        // Dory self-draft: same weights, KV only for the first n_loops loops
++        cparams.n_loops_max = params.speculative.draft.n_loops;
++
++        LOG_INF("%s: creating %d-loop draft context against the target model\n", __func__, cparams.n_loops_max);
++
++        llama_context * ctx_dft = llama_init_from_model(model_tgt, cparams);
++        if (ctx_dft == nullptr || llama_set_n_loops(ctx_dft, cparams.n_loops_max) != 0) {
++            LOG_ERR("%s: failed to create the %d-loop draft context (Dory model, n <= num_loops?)\n", __func__, cparams.n_loops_max);
++            llama_free(ctx_dft);
++            return;
++        }
++
+         pimpl->context.reset(ctx_dft);
+     } else if (spec_mtp) {
+         model_path = params.model.path;
+diff --git a/include/llama.h b/include/llama.h
+index ae54e66..7134683 100644
+--- a/include/llama.h
++++ b/include/llama.h
+@@ -369,6 +369,7 @@ extern "C" {
+         uint32_t n_ubatch;              // physical maximum batch size
+         uint32_t n_seq_max;             // max number of sequences (i.e. distinct states for recurrent models)
+         uint32_t n_rs_seq;              // number of recurrent-state snapshots per seq for rollback (0 = no rollback) [EXPERIMENTAL]
++        int32_t  n_loops_max;           // Dory: max loops this context can run, sizes the KV cache (0 = model num_loops)
+         uint32_t n_outputs_max;         // max outputs in a ubatch (0 = n_batch)
+         uint32_t n_outputs_max_per_seq; // max outputs per sequence (0 = n_outputs_max)
+         int32_t  n_threads;             // number of threads to use for generation
+@@ -1109,6 +1110,12 @@ extern "C" {
+     // TODO: rename to avoid confusion with llama_get_embeddings()
+     LLAMA_API void llama_set_embeddings(struct llama_context * ctx, bool embeddings);
+ 
++    // Dory (looped) models: set the number of recurrent loops used by subsequent decodes (1..n_loops_max).
++    // Returns 0 on success, -1 if out of range or the model is not Dory. Does not touch memory:
++    // the caller must clear sequences when changing it.
++    LLAMA_API int32_t llama_set_n_loops(struct llama_context * ctx, int32_t n_loops);
++    LLAMA_API int32_t llama_get_n_loops(const struct llama_context * ctx);
++
+     // Set whether to use causal attention or not
+     // If set to true, the model will only attend to the past tokens
+     LLAMA_API void llama_set_causal_attn(struct llama_context * ctx, bool causal_attn);
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 887e667..da3a4d3 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -9,6 +9,7 @@
+ #include "llama-memory.h"
+ #include "llama-mmap.h"
+ #include "llama-model.h"
++#include "models/models.h"
+ #include "llama-moe-cache.h"
+ #include "llama-ext.h"
+ #include "llama-sampler.h"
+@@ -194,6 +195,12 @@ llama_context::llama_context(
+         throw std::runtime_error("n_seq_max must be <= " + std::to_string(LLAMA_MAX_SEQ));
+     }
+ 
++    if (model.arch == LLM_ARCH_DORY) {
++        const int32_t nl = (int32_t) static_cast<const llama_model_dory &>(model).n_loops;
++        cparams.n_loops_max = params.n_loops_max > 0 ? std::min(params.n_loops_max, nl) : nl;
++        cparams.n_loops     = cparams.n_loops_max;
++    }
++
+     cparams.n_rs_seq = params.n_rs_seq;
+     if (cparams.n_rs_seq > 0 && !llm_arch_supports_rs_rollback(model.arch)) {
+         LLAMA_LOG_DEBUG("%s: n_rs_seq=%u requested but model does not support recurrent partial rollback; clamping to 0\n",
+@@ -1337,6 +1344,14 @@ void llama_context::set_abort_callback(bool (*abort_callback)(void * data), void
+     }
+ }
+ 
++int32_t llama_context::set_n_loops(int32_t n_loops) {
++    if (n_loops < 1 || n_loops > cparams.n_loops_max) {
++        return -1;
++    }
++    cparams.n_loops = n_loops;
++    return 0;
++}
++
+ void llama_context::set_embeddings(bool value) {
+     LLAMA_LOG_DEBUG("%s: value = %d\n", __func__, value);
+ 
+@@ -2677,7 +2692,9 @@ ggml_cgraph * llama_context::graph_reserve(
+ 
+     auto * res = gf_res_reserve.get();
+ 
+-    const auto gparams = graph_params(res, ubatch, mctx, ctx_type_to_graph_type(cparams.ctx_type));
++    auto gparams = graph_params(res, ubatch, mctx, ctx_type_to_graph_type(cparams.ctx_type));
++    // Reserve for the largest loop graph, even after a switch to fewer loops.
++    gparams.cparams.n_loops = cparams.n_loops_max;
+ 
+     res->reset();
+ 
+@@ -4006,6 +4023,7 @@ llama_context_params llama_context_default_params() {
+         /*.n_ubatch                    =*/ 512,
+         /*.n_seq_max                   =*/ 1,
+         /*.n_rs_seq                    =*/ 0,
++        /*.n_loops_max                 =*/ 0,
+         /*.n_outputs_max               =*/ 0,
+         /*.n_outputs_max_per_seq       =*/ 1,
+         /*.n_threads                   =*/ GGML_DEFAULT_N_THREADS, // TODO: better default
+@@ -4225,6 +4243,14 @@ void llama_set_embeddings(llama_context * ctx, bool embeddings) {
+     ctx->set_embeddings(embeddings);
+ }
+ 
++int32_t llama_set_n_loops(llama_context * ctx, int32_t n_loops) {
++    return ctx->set_n_loops(n_loops);
++}
++
++int32_t llama_get_n_loops(const llama_context * ctx) {
++    return ctx->get_cparams().n_loops;
++}
++
+ void llama_set_causal_attn(llama_context * ctx, bool causal_attn) {
+     ctx->set_causal_attn(causal_attn);
+ }
+diff --git a/src/llama-context.h b/src/llama-context.h
+index 6938fb1..cd68886 100644
+--- a/src/llama-context.h
++++ b/src/llama-context.h
+@@ -117,6 +117,7 @@ struct llama_context {
+ 
+     void set_abort_callback(bool (*abort_callback)(void * data), void * abort_callback_data);
+ 
++    int32_t set_n_loops(int32_t n_loops); // Dory: 0 on success, -1 if out of range or not Dory
+     void set_embeddings (bool value);
+     void set_embeddings_nextn(bool value, bool masked);
+     void set_embeddings_layer_inp(uint32_t lid, bool enable);
+diff --git a/src/llama-cparams.h b/src/llama-cparams.h
+index 0c260f7..ddea18e 100644
+--- a/src/llama-cparams.h
++++ b/src/llama-cparams.h
+@@ -13,6 +13,8 @@ struct llama_cparams {
+     uint32_t n_batch;
+     uint32_t n_ubatch;
+     uint32_t n_seq_max;
++    int32_t  n_loops = 0;     // Dory: current loop count
++    int32_t  n_loops_max = 0; // Dory: max loop count (KV allocation)
+     uint32_t n_rs_seq;        // number of recurrent-state snapshots per seq for rollback
+     uint32_t n_outputs_max;   // max outputs supported by the context
+     uint32_t n_outputs_max_per_seq;
+diff --git a/src/llama-graph.h b/src/llama-graph.h
+index c1a7d36..b660fa6 100644
+--- a/src/llama-graph.h
++++ b/src/llama-graph.h
+@@ -892,6 +892,10 @@ struct llm_graph_params {
+             }
+         }
+ 
++        if (cparams.n_loops != other.cparams.n_loops) {
++            return false;
++        }
++
+         // TODO: https://github.com/ggml-org/llama.cpp/pull/24340#discussion_r3448035248
+         if (cparams.nextn_layer_offset != other.cparams.nextn_layer_offset) {
+             return false;
+diff --git a/src/llama-model.cpp b/src/llama-model.cpp
+index 125670e..a918e4c 100644
+--- a/src/llama-model.cpp
++++ b/src/llama-model.cpp
+@@ -3255,7 +3255,13 @@ llama_memory_i * llama_model::create_memory(const llama_memory_params & params,
+                     if (arch == LLM_ARCH_DORY) {
+                         filter = [&](uint32_t il) {
+                             const auto & dory = static_cast<const llama_model_dory &>(*this);
+-                            return hparams.n_head_kv(il) > 0 && dory.cache_layer[il] == (int) il;
++                            if (hparams.n_head_kv(il) == 0 || dory.cache_layer[il] != (int) il) {
++                                return false;
++                            }
++                            // per_loop: skip recurrent virtual layers of loops >= n_loops_max (last_loop only keeps loop 0 anyway)
++                            const int rel = (int) il - (int) dory.n_input;
++                            return rel < 0 || rel >= (int) (dory.n_recurrent * dory.n_loops) ||
++                                   rel / (int) dory.n_recurrent < cparams.n_loops_max;
+                         };
+                     }
+ 
+diff --git a/src/models/dory.cpp b/src/models/dory.cpp
+index 878d1bf..0b06654 100644
+--- a/src/models/dory.cpp
++++ b/src/models/dory.cpp
+@@ -128,11 +128,16 @@ llama_model_dory::graph::graph(const llama_model_dory & model, const llm_graph_p
+     ggml_tensor * out_ids = build_inp_out_ids();
+     auto * attn = build_attn_inp_kv_iswa();
+     ggml_tensor * input_h = nullptr;
+-    const int recurrent_end = model.n_input + model.n_recurrent * model.n_loops;
++    // run only the first cparams.n_loops recurrent blocks, then jump to the output layers
++    const int recurrent_end = model.n_input + model.n_recurrent * cparams.n_loops;
++    const int recurrent_end_full = model.n_input + model.n_recurrent * model.n_loops;
+     const auto norm = [&](ggml_tensor * x) { return build_gdn_l2_norm(ctx0, x, 1e-6f); };
+     const auto f32 = [&](ggml_tensor * x) { return x->type == GGML_TYPE_F32 ? x : ggml_cast(ctx0, x, GGML_TYPE_F32); };
+ 
+     for (int il = 0; il < n_layer; ++il) {
++        if (il == recurrent_end) {
++            il = recurrent_end_full;
++        }
+         const int p = model.physical[il];
+         const auto & l = model.layers[il];
+         const auto & s = model.scale[il];
+diff --git a/tests/CMakeLists.txt b/tests/CMakeLists.txt
+index 97f9efe..bbc07a4 100644
+--- a/tests/CMakeLists.txt
++++ b/tests/CMakeLists.txt
+@@ -178,6 +178,7 @@ set(LLAMA_CONTEXT_TEST_SRC
+     llama-context/test-util.cpp
+ )
+ llama_build(${LLAMA_CONTEXT_TEST_SRC})
++llama_build(test-dory-loops.cpp LINK llama)
+ 
+ if (NOT WIN32 OR NOT BUILD_SHARED_LIBS)
+     # these tests are disabled on Windows because they use internal functions not exported with LLAMA_API (when building with shared libraries)
+diff --git a/tests/test-dory-loops.cpp b/tests/test-dory-loops.cpp
+new file mode 100644
+index 0000000..cb4d13a
+--- /dev/null
++++ b/tests/test-dory-loops.cpp
+@@ -0,0 +1,160 @@
++// Dory runtime loop count: a stock (num_loops=4) context with llama_set_n_loops(k) must match
++// a model loaded with dory.num_loops=k. Usage: test-dory-loops <dory.gguf>
++#include "llama.h"
++
++#include <algorithm>
++#include <cmath>
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <string>
++#include <vector>
++
++#define CHECK(cond) do { if (!(cond)) { fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); exit(1); } } while (0)
++
++static const int N_PROMPT = 64;
++static const int N_GEN    = 32;
++
++static llama_model * load(const char * path, int num_loops) {
++    llama_model_kv_override ov[2] = {};
++    auto mp = llama_model_default_params();
++    if (num_loops > 0) {
++        ov[0].tag = LLAMA_KV_OVERRIDE_TYPE_INT;
++        strcpy(ov[0].key, "dory.num_loops");
++        ov[0].val_i64 = num_loops;
++        mp.kv_overrides = ov;
++    }
++    llama_model * m = llama_model_load_from_file(path, mp);
++    CHECK(m);
++    return m;
++}
++
++static llama_context * make_ctx(llama_model * m, int32_t n_loops_max) {
++    auto cp = llama_context_default_params();
++    cp.n_ctx = 256;
++    cp.n_batch = N_PROMPT;
++    cp.n_ubatch = N_PROMPT;
++    cp.n_loops_max = n_loops_max;
++    llama_context * c = llama_init_from_model(m, cp);
++    CHECK(c);
++    return c;
++}
++
++static llama_token argmax(const float * l, int n) {
++    return (llama_token) (std::max_element(l, l + n) - l);
++}
++
++// decode the prompt; return last-token logits and the 32 greedy tokens that follow
++static void run(llama_context * c, const std::vector<llama_token> & prompt, std::vector<float> & logits, std::vector<llama_token> & gen) {
++    const int n_vocab = llama_vocab_n_tokens(llama_model_get_vocab(llama_get_model(c)));
++    llama_memory_clear(llama_get_memory(c), true);
++    auto p = prompt;
++    CHECK(llama_decode(c, llama_batch_get_one(p.data(), (int32_t) p.size())) == 0);
++    const float * l = llama_get_logits_ith(c, -1);
++    logits.assign(l, l + n_vocab);
++    gen.clear();
++    llama_token t = argmax(l, n_vocab);
++    for (int i = 0; i < N_GEN; ++i) {
++        gen.push_back(t);
++        CHECK(llama_decode(c, llama_batch_get_one(&t, 1)) == 0);
++        t = argmax(llama_get_logits_ith(c, -1), n_vocab);
++    }
++}
++
++int main(int argc, char ** argv) {
++    CHECK(argc == 2);
++    const char * path = argv[1];
++    llama_backend_init();
++    llama_log_set([](ggml_log_level lvl, const char * msg, void *) { if (lvl >= GGML_LOG_LEVEL_WARN) fputs(msg, stderr); }, nullptr);
++
++    llama_model * stock = load(path, 0);
++    llama_context * b = make_ctx(stock, 0);
++    CHECK(llama_get_n_loops(b) == 4);
++
++    const std::string text =
++        "The quick brown fox jumps over the lazy dog. In a small village by the sea, an old fisherman "
++        "mended his nets every morning while the gulls circled overhead and the children ran along the "
++        "shore collecting shells, counting waves, and telling stories about ships that never came back. "
++        "When evening fell, the lighthouse keeper climbed the spiral stairs, lit the great lamp, and wrote "
++        "in his logbook the names of every vessel that passed the rocks before the tide turned again.";
++    std::vector<llama_token> prompt(256);
++    const int n = llama_tokenize(llama_model_get_vocab(stock), text.c_str(), (int32_t) text.size(), prompt.data(), (int32_t) prompt.size(), true, false);
++    CHECK(n >= N_PROMPT);
++    prompt.resize(N_PROMPT);
++
++    int failed = 0;
++    for (int k : {1, 2, 4}) {
++        llama_model * mk = load(path, k);
++        llama_context * a = make_ctx(mk, 0);
++        CHECK(llama_get_n_loops(a) == k);
++        CHECK(llama_set_n_loops(b, k) == 0);
++        CHECK(llama_get_n_loops(b) == k);
++
++        std::vector<float> la, lb;
++        std::vector<llama_token> ga, gb;
++        run(a, prompt, la, ga);
++        run(b, prompt, lb, gb);
++        float diff = 0.0f;
++        for (size_t i = 0; i < la.size(); ++i) {
++            diff = std::max(diff, std::fabs(la[i] - lb[i]));
++        }
++        const bool ok = diff <= 1e-3f && ga == gb;
++        printf("k=%d max_abs_logit_diff=%g greedy_%d_match=%d %s\n", k, diff, N_GEN, (int) (ga == gb), ok ? "PASS" : "FAIL");
++        failed += !ok;
++        llama_free(a);
++        llama_model_free(mk);
++    }
++
++    // graph reuse across a loop switch: same-shape 1-token decodes at k=1 then k=4 must not share a graph
++    {
++        const int n_vocab = llama_vocab_n_tokens(llama_model_get_vocab(stock));
++        llama_token t = prompt[0];
++        auto one = [&](llama_context * ctx) {
++            llama_memory_clear(llama_get_memory(ctx), true);
++            CHECK(llama_decode(ctx, llama_batch_get_one(&t, 1)) == 0);
++            const float * l = llama_get_logits_ith(ctx, -1);
++            return std::vector<float>(l, l + n_vocab);
++        };
++        llama_context * r = make_ctx(stock, 0); // fresh k=4
++        const auto want = one(r);
++        llama_free(r);
++        CHECK(llama_set_n_loops(b, 1) == 0);
++        const auto k1 = one(b);
++        CHECK(llama_set_n_loops(b, 4) == 0);
++        const auto got = one(b);
++        float d4 = 0.0f, d1 = 0.0f;
++        for (int i = 0; i < n_vocab; ++i) {
++            d4 = std::max(d4, std::fabs(got[i] - want[i]));
++            d1 = std::max(d1, std::fabs(k1[i] - want[i]));
++        }
++        const bool ok = d4 <= 1e-3f && d1 > 1e-3f;
++        printf("1-token decode after k=1->4 switch: diff vs fresh k=4 %g (k=1 differs by %g) %s\n", d4, d1, ok ? "PASS" : "FAIL");
++        failed += !ok;
++    }
++
++    CHECK(llama_set_n_loops(b, 3) == 0);
++    CHECK(llama_set_n_loops(b, 5) == -1);
++    CHECK(llama_set_n_loops(b, 0) == -1);
++    CHECK(llama_get_n_loops(b) == 3);
++    printf("set_n_loops range checks PASS\n");
++
++    // n_loops_max=1 allocates fewer KV layers: same prompt -> smaller state
++    llama_context * c = make_ctx(stock, 1);
++    CHECK(llama_get_n_loops(c) == 1);
++    CHECK(llama_set_n_loops(c, 2) == -1);
++    std::vector<float> lc;
++    std::vector<llama_token> gc;
++    run(c, prompt, lc, gc);
++    CHECK(llama_set_n_loops(b, 1) == 0);
++    run(b, prompt, lc, gc);
++    const size_t sb = llama_state_get_size(b), sc = llama_state_get_size(c);
++    printf("state size n_loops_max=4: %zu, n_loops_max=1: %zu %s\n", sb, sc, sc < sb ? "PASS" : "FAIL");
++    failed += !(sc < sb);
++
++    llama_free(c);
++    llama_free(b);
++    llama_model_free(stock);
++    llama_backend_free();
++    printf(failed ? "FAILED\n" : "ALL PASS\n");
++    return failed ? 1 : 0;
++}
+diff --git a/tools/server/server-common.cpp b/tools/server/server-common.cpp
+index 311eb4f..e718397 100644
+--- a/tools/server/server-common.cpp
++++ b/tools/server/server-common.cpp
+@@ -158,6 +158,10 @@ json server_slot_stats::to_json() const {
+         base["draft_n_accepted"] = n_draft_accepted;
+     }
+ 
++    if (n_loops > 0) {
++        base["n_loops"] = n_loops;
++    }
++
+     return base;
+ }
+ 
+diff --git a/tools/server/server-common.h b/tools/server/server-common.h
+index 01bf12e..f187003 100644
+--- a/tools/server/server-common.h
++++ b/tools/server/server-common.h
+@@ -414,6 +414,8 @@ struct server_slot_stats {
+     uint64_t n_draft_accepted    = 0;
+     uint64_t n_draft_verif_steps = 0;
+ 
++    int32_t n_loops = 0; // Dory: loop count of the request (reported when > 0)
++
+     // these are absolute timestamps (in us)
+     // note: must be signed - they are subtracted before the later ones are set
+     int64_t t_start       = 0;
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index 9377e3c..210d43b 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -291,6 +291,7 @@ struct server_slot {
+ 
+     // speculative decoding
+     common_speculative * spec;
++    int32_t spec_draft_loops = 0; // Dory self-draft loop count: requests at <= this many loops do not speculate
+ 
+     llama_tokens spec_draft;
+ 
+@@ -366,8 +367,8 @@ struct server_slot {
+         return true;
+     }
+ 
+-    bool prompt_load(server_prompt_cache & prompt_cache, const server_tokens & tokens) {
+-        bool res = prompt_cache.load(prompt, tokens, ctx_tgt, ctx_dft, id);
++    bool prompt_load(server_prompt_cache & prompt_cache, const server_tokens & tokens, int32_t n_loops) {
++        bool res = prompt_cache.load(prompt, tokens, n_loops, ctx_tgt, ctx_dft, id);
+         if (!res) {
+             SLT_WRN(*this, "%s", "failed to load prompt from cache\n");
+         }
+@@ -541,6 +542,7 @@ struct server_slot {
+         }
+ 
+         return task->type == other_slot.task->type
++            && task->params.n_loops == other_slot.task->params.n_loops // Dory: a batch runs one loop count
+             && inp_embd.size() == other_slot.inp_embd.size()
+             && are_lora_equal(lora, other_slot.lora);
+     }
+@@ -583,6 +585,11 @@ struct server_slot {
+             return 0;
+         }
+ 
++        // the self-draft would run as many loops as the target: nothing to gain
++        if (spec_draft_loops > 0 && task->params.n_loops <= spec_draft_loops) {
++            return 0;
++        }
++
+         // determine the max draft that fits the current slot state
+         // note: slot.prompt is not yet expanded with the `id` token sampled above
+         //       also, need to leave space for 1 extra token to allow context shifts
+@@ -1096,6 +1103,12 @@ private:
+ 
+     int32_t n_ctx; // total context for all clients / slots
+ 
++    int32_t n_loops_max = 0; // Dory: largest per-request n_loops, the model's num_loops (0 = not a looped model)
++
++    int32_t task_n_loops(const server_task & task) const {
++        return task.params.n_loops > 0 ? task.params.n_loops : n_loops_max;
++    }
++
+     // set to llama_model_n_swa(model)
+     // if swa_full is enabled, this is set to 0 to simulate a non-SWA model
+     int32_t n_swa;
+@@ -1217,7 +1230,7 @@ private:
+         const bool spec_mtp = std::find(params_base.speculative.types.begin(),
+                                         params_base.speculative.types.end(),
+                                         COMMON_SPECULATIVE_TYPE_DRAFT_MTP) != params_base.speculative.types.end();
+-        const bool has_spec = has_draft || spec_mtp;
++        const bool has_spec = has_draft || spec_mtp || params_base.speculative.draft.n_loops > 0;
+ 
+         if (callback_state) {
+             std::vector<std::string> stages = {"text_model"};
+@@ -1328,6 +1341,8 @@ private:
+ 
+         n_ctx = llama_n_ctx(ctx_tgt);
+ 
++        n_loops_max = llama_get_n_loops(ctx_tgt); // a fresh context starts at its maximum
++
+         add_bos_token = llama_vocab_get_add_bos(vocab);
+ 
+         if (has_spec) {
+@@ -1524,6 +1539,7 @@ private:
+             slot.ctx_dft = ctx_dft;
+             slot.mem.init(ctx_tgt, ctx_dft);
+             slot.spec    = spec.get();
++            slot.spec_draft_loops = params_base.speculative.draft.n_loops;
+             slot.n_ctx   = n_ctx_slot();
+ 
+             slot.mctx                   = mctx;
+@@ -1835,6 +1851,11 @@ private:
+                     continue;
+                 }
+ 
++                // tokens computed at another loop count are not reusable
++                if (slot.prompt.n_loops != task_n_loops(task)) {
++                    continue;
++                }
++
+                 // fraction of the Longest Common Prefix length with respect to the input prompt length
+                 const size_t lcp_len = tokens.get_common_prefix(task.tokens);
+                 const float f_sim_cur = float(lcp_len) / task.tokens.size();
+@@ -1890,7 +1911,7 @@ private:
+ 
+                 ret->prompt_save(*prompt_cache);
+ 
+-                if (!ret->prompt_load(*prompt_cache, task.tokens)) {
++                if (!ret->prompt_load(*prompt_cache, task.tokens, task_n_loops(task))) {
+                     ret->prompt_clear();
+                 }
+ 
+@@ -2095,6 +2116,15 @@ private:
+         // the per-request limit takes priority over the global one
+         slot.n_predict_max = task.params.n_predict != -1 ? task.params.n_predict : params_base.n_predict;
+ 
++        // Dory: the slot's KV computed at another loop count is wrong for this request, reprocess the whole prompt
++        task.params.n_loops = task_n_loops(task);
++        if (slot.prompt.n_loops != task.params.n_loops) {
++            llama_memory_seq_rm(llama_get_memory(ctx_tgt), slot.id, -1, -1);
++            slot.prompt.clear();
++            slot.prompt.n_loops = task.params.n_loops;
++        }
++        slot.stats.n_loops = task.params.n_loops;
++
+         slot.task = std::make_unique<const server_task>(std::move(task));
+ 
+         if (slot.task->type == SERVER_TASK_TYPE_TTS) {
+@@ -3319,6 +3349,8 @@ private:
+ 
+                         slot->prompt.clear();
+                         slot->prompt.tokens = std::move(restored);
++                        // Files omit the loop count: 0 == 0 preserves non-Dory reuse; Dory never reuses this state, so restore is effectively a no-op.
++                        slot->prompt.n_loops = 0;
+                     } catch (const std::exception & err) {
+                         slot->prompt_clear();
+                         send_error(task, std::string("Unable to restore slot: ") + err.what(), ERROR_TYPE_INVALID_REQUEST);
+@@ -3625,6 +3657,11 @@ private:
+             }
+ 
+             llama_set_embeddings(ctx_tgt, slot_batched->need_embd());
++
++            // Dory: every slot in the batch has this loop count (can_batch_with), the previous batch is fully decoded
++            if (n_loops_max > 0 && llama_set_n_loops(ctx_tgt, slot_batched->task->params.n_loops) != 0) {
++                GGML_ABORT("llama_set_n_loops(%d) failed\n", slot_batched->task->params.n_loops);
++            }
+         }
+ 
+         int32_t off_next = 0;
+@@ -4675,7 +4712,7 @@ private:
+         // TODO @ngxson : dft model may have different n_embd than the tgt model, so we check & reject if that's the case
+         // this case is not currently used by any models, but may need to be supported in the future
+         if (spec && batch.has_embd()) {
+-            if (llama_model_n_embd_inp(model_dft) != llama_model_n_embd_inp(model_tgt)) {
++            if (llama_model_n_embd_inp(model_dft ? model_dft : model_tgt) != llama_model_n_embd_inp(model_tgt)) {
+                 SRV_ERR("%s", "unsupported batch.has_embd + spec case\n");
+                 throw std::runtime_error("unsupported batch.has_embd + spec case");
+             }
+@@ -5264,6 +5301,7 @@ server_context_meta server_context::get_meta() const {
+         /* model_n_params          */ llama_model_n_params(impl->model_tgt),
+         /* model_size              */ llama_model_size(impl->model_tgt),
+         /* model_ftype             */ ftype_name,
++        /* n_loops_max             */ impl->n_loops_max,
+     };
+ }
+ 
+@@ -5362,6 +5400,16 @@ std::unique_ptr<server_res_generator> server_routes::handle_completions_impl(
+                     meta->logit_bias_eog,
+                     data);
+ 
++            // Dory: per-request loop count
++            if (data.contains("n_loops")) {
++                const auto & v = data.at("n_loops");
++                const int32_t n = v.is_number_integer() && (v == 1 || v == 2 || v == 4) ? v.get<int32_t>() : 0;
++                if (n == 0 || n > meta->n_loops_max) {
++                    throw std::invalid_argument("n_loops must be one of 1, 2, 4 and <= n_loops_max");
++                }
++                task.params.n_loops = n;
++            }
++
+             task.apply_chat_session(chat_session);
+ 
+             task.id_slot = json_value(data, "id_slot", -1);
+@@ -5694,6 +5742,10 @@ static json get_res_props(const server_context_meta & meta, const common_params
+         { "cors_proxy_enabled",          params.ui_mcp_proxy },
+     };
+ 
++    if (meta.n_loops_max > 0) {
++        props["n_loops_max"] = meta.n_loops_max;
++    }
++
+     if (!params.server_connect_code.empty()) {
+         props["connect_code"] = params.server_connect_code;
+     }
+diff --git a/tools/server/server-context.h b/tools/server/server-context.h
+index d283c91..3b598c8 100644
+--- a/tools/server/server-context.h
++++ b/tools/server/server-context.h
+@@ -56,6 +56,7 @@ struct server_context_meta {
+     uint64_t model_n_params;
+     uint64_t model_size;
+     std::string model_ftype;
++    int32_t n_loops_max; // Dory: largest per-request n_loops (0 = not a looped model)
+ };
+ 
+ using server_state_callback_t = std::function<void(server_state, json /* payload */)>;
+diff --git a/tools/server/server-task.cpp b/tools/server/server-task.cpp
+index 1a0d434..db6ad34 100644
+--- a/tools/server/server-task.cpp
++++ b/tools/server/server-task.cpp
+@@ -1758,7 +1758,7 @@ server_prompt_cache_state * server_prompt_cache::alloc(const server_prompt & pro
+     for (auto it = states.begin(); it != states.end(); ++it) {
+         const int cur_lcp_len = it->prompt.tokens.get_common_prefix(prompt.tokens);
+ 
+-        if (cur_lcp_len == (int) prompt.tokens.size()) {
++        if (it->prompt.n_loops == prompt.n_loops && cur_lcp_len == (int) prompt.tokens.size()) {
+             SRV_TRC("%s", " - prompt is already in the cache, skipping\n");
+             return nullptr;
+         }
+@@ -1783,7 +1783,7 @@ server_prompt_cache_state * server_prompt_cache::alloc(const server_prompt & pro
+     for (auto it = states.begin(); it != states.end();) {
+         const int len = it->prompt.tokens.get_common_prefix(prompt.tokens);
+ 
+-        if (len == (int) it->prompt.tokens.size()) {
++        if (it->prompt.n_loops == prompt.n_loops && len == (int) it->prompt.tokens.size()) {
+             SRV_TRC(" - removing obsolete cached prompt with length %d\n", len);
+ 
+             it = states.erase(it);
+@@ -1825,6 +1825,7 @@ server_prompt_cache_state * server_prompt_cache::alloc(const server_prompt & pro
+         /*.prompt =*/ {
+             /*.tokens      =*/ prompt.tokens.clone(),
+             /*.checkpoints =*/ prompt.checkpoints,
++            /*.n_loops     =*/ prompt.n_loops,
+         },
+         /*.data   =*/ {
+             /*.main =*/ std::move(state_data_tgt),
+@@ -1835,10 +1836,12 @@ server_prompt_cache_state * server_prompt_cache::alloc(const server_prompt & pro
+     return &states.back();
+ }
+ 
+-bool server_prompt_cache::load(server_prompt & prompt, const server_tokens & tokens_new, llama_context * ctx_tgt, llama_context * ctx_dft, int32_t id_slot) {
+-    const int lcp_best = prompt.tokens.get_common_prefix(tokens_new);
++bool server_prompt_cache::load(server_prompt & prompt, const server_tokens & tokens_new, int32_t n_loops, llama_context * ctx_tgt, llama_context * ctx_dft, int32_t id_slot) {
++    // the slot's own tokens count only if they were computed at the requested loop count
++    const bool same_loops = prompt.n_loops == n_loops;
++    const int lcp_best = same_loops ? prompt.tokens.get_common_prefix(tokens_new) : 0;
+ 
+-    float f_keep_best = prompt.tokens.size() > 0 ? float(lcp_best) / prompt.tokens.size() : -1.0f; // empty slot: any cache entry wins
++    float f_keep_best = prompt.tokens.size() > 0 && same_loops ? float(lcp_best) / prompt.tokens.size() : -1.0f; // empty slot: any cache entry wins
+     float f_sim_best  = float(lcp_best) / tokens_new.size();
+ 
+     SRV_TRC(" - looking for better prompt, base f_keep = %.3f, f_sim = %.3f\n", f_keep_best, f_sim_best);
+@@ -1847,6 +1850,10 @@ bool server_prompt_cache::load(server_prompt & prompt, const server_tokens & tok
+ 
+     // find the most similar cached prompt, that would also preserve the most context
+     for (auto it = states.begin(); it != states.end(); ++it) {
++        if (it->prompt.n_loops != n_loops) {
++            continue; // computed at another loop count: its KV is wrong for this request
++        }
++
+         const int lcp_cur = it->prompt.tokens.get_common_prefix(tokens_new);
+ 
+         const float f_keep_cur = float(lcp_cur) / it->prompt.tokens.size();
+diff --git a/tools/server/server-task.h b/tools/server/server-task.h
+index 21b649a..b123ec4 100644
+--- a/tools/server/server-task.h
++++ b/tools/server/server-task.h
+@@ -89,6 +89,8 @@ struct task_params {
+ 
+     int32_t n_cache_reuse = 0; // min chunk size to attempt reusing from the cache via KV shifting (0 = disabled)
+ 
++    int32_t n_loops = 0; // Dory: loop count for this request (0 = the model's num_loops)
++
+     int64_t t_max_prompt_ms  = -1; // TODO: implement
+     int64_t t_max_predict_ms = -1; // if positive, limit the generation phase to this time limit
+ 
+@@ -688,6 +690,8 @@ struct server_prompt {
+ 
+     std::list<common_prompt_checkpoint> checkpoints;
+ 
++    int32_t n_loops = 0; // Cached loop count: 0 matches non-Dory requests; unknown Dory counts never match.
++
+     void clear() {
+         tokens.clear();
+         checkpoints.clear();
+@@ -701,6 +705,7 @@ struct server_prompt {
+         return server_prompt {
+             tokens.clone(),
+             checkpoints,
++            n_loops,
+         };
+     }
+ };
+@@ -749,7 +754,8 @@ struct server_prompt_cache {
+ 
+     server_prompt_cache_state * alloc(const server_prompt & prompt, size_t state_size_main, size_t state_size_drft);
+ 
+-    bool load(server_prompt & prompt, const server_tokens & tokens_new, llama_context * ctx_tgt, llama_context * ctx_dft, int32_t id_slot);
++    // only entries computed at n_loops are candidates
++    bool load(server_prompt & prompt, const server_tokens & tokens_new, int32_t n_loops, llama_context * ctx_tgt, llama_context * ctx_dft, int32_t id_slot);
+ 
+     void update();
+ };

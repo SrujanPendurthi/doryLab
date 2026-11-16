@@ -3,10 +3,60 @@ import pytest
 
 from dory.config import KS
 from dory.features import feature_rows
-from dory.policy import (choose_k, fit, load_policy, proba_for_ks, save_policy,
+from dory.policy import (choose_k, decide_k, fit, load_policy, proba_for_ks, save_policy,
                          tau_for_mean_k)
 
 P = np.array([[0.5, 0.3, 0.2]])
+
+
+def test_decide_k_uses_tau_and_code_floor(monkeypatch):
+    from dory import policy
+
+    class FavourK1:
+        classes_ = np.array(KS)
+
+        def predict_proba(self, X):
+            return np.tile([0.9, 0.05, 0.05], (len(X), 1))
+
+    pol = {"model": FavourK1(), "tau": 0.5, "feature_set": "text"}
+    monkeypatch.setattr(policy, "text_features",
+                        lambda texts: (np.zeros((1, 9)), np.array([False]), np.zeros(1)))
+    assert decide_k(pol, "easy") == 1
+    pol["tau"] = 0.99
+    assert decide_k(pol, "easy") == 4
+    pol["tau"] = 0.5
+    monkeypatch.setattr(policy, "text_features",
+                        lambda texts: (np.zeros((1, 9)), np.array([True]), np.zeros(1)))
+    assert decide_k(pol, "code") == 2
+
+
+def test_decide_k_matches_router(monkeypatch):
+    import json
+    import threading
+    from pathlib import Path
+    from huggingface_hub import try_to_load_from_cache
+    from dory.nvidia_classifier import REPO
+    from dory.router import Router
+
+    if not isinstance(try_to_load_from_cache(REPO, "model.safetensors"), str):
+        pytest.skip("classifier weights are not cached")
+    policy_path = Path("results/policy_text.joblib")
+    prompts_path = Path("results/labels_train.jsonl")
+    if not policy_path.exists() or not prompts_path.exists():
+        pytest.skip("trained policy or train prompts unavailable")
+    # CPU only; the parity test never starts a llama-server or uses a GPU.
+    from dory import features, policy, router
+    real_features = features.text_features
+    cpu_features = lambda texts: real_features(texts, device="cpu")
+    monkeypatch.setattr(policy, "text_features", cpu_features)
+    monkeypatch.setattr(router, "text_features", cpu_features)
+    r = Router.__new__(Router)
+    r.policy = load_policy(policy_path)
+    r.feature_set = "text"
+    r._lock = threading.Lock()
+    prompts = [json.loads(line)["prompt"] for line in prompts_path.read_text().splitlines()[:5]]
+    for prompt in prompts:
+        assert decide_k(r.policy, prompt) == r._decide(prompt)[0]
 
 
 def test_choose_k_cumulative():

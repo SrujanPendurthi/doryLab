@@ -19,10 +19,16 @@ def free_port() -> int:
 
 def server_args(gguf: Path, k: int, port: int, slots: int = 4, ctx_per_slot: int = 4096,
                 kv_type: str = "f16", embeddings: bool = False, draft: Path | None = None,
-                extra: list[str] = []) -> list[str]:
+                extra: list[str] = [], runtime_loops: bool = False,
+                spec_draft_loops: int | None = None) -> list[str]:
     a = ["-m", str(gguf), "-ngl", "99", "-fa", "on", "--temp", "0", "--seed", "0", "-np", str(slots),
          "-c", str(ctx_per_slot * slots), "--port", str(port)]
-    if draft is None:
+    if runtime_loops:
+        # patched llama-server (patches/llama-dory-runtime-loops.patch): k comes per request (`n_loops`)
+        a += ["--jinja"]
+        if spec_draft_loops is not None:  # same-weights draft context running spec_draft_loops loops
+            a += ["--spec-type", "draft-simple", "--spec-draft-n-max", "4", "--spec-draft-loops", str(spec_draft_loops)]
+    elif draft is None:
         a += ["--override-kv", f"dory.num_loops=int:{k}"]
     else:
         # llama-server copies the target's kv_overrides to the draft (common/speculative.cpp
